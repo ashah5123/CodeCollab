@@ -10,6 +10,11 @@ from app.routers import collab as collab_router
 from app.routers import organisations as organisations_router
 from app.routers import leaderboard as leaderboard_router
 from app.routers import submissions as submissions_router
+from app.routers import comments as comments_router
+from app.routers import chat as chat_router
+from app.routers import messages as messages_router
+from app.routers import notifications as notifications_router
+from app.routers import execute as execute_router
 from app.schemas import (
     RoomCreate,
     RoomResponse,
@@ -47,6 +52,11 @@ app.include_router(collab_router.router)
 app.include_router(organisations_router.router)
 app.include_router(leaderboard_router.router)
 app.include_router(submissions_router.router, prefix="/api/v1")
+app.include_router(comments_router.router, prefix="/api/v1")
+app.include_router(chat_router.router, prefix="/api/v1")
+app.include_router(messages_router.router, prefix="/api/v1")
+app.include_router(notifications_router.router, prefix="/api/v1")
+app.include_router(execute_router.router, prefix="/api/v1")
 
 
 @app.get("/health")

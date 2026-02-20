@@ -15,10 +15,10 @@
     "@codemirror/lang-xml": "^6.0.2",
     "@codemirror/state": "^6.4.1",
     "@codemirror/view": "^6.25.1",
-    "@uiw/codemirror-theme-basic": "^4.25.4",
-    "@uiw/react-codemirror": "^4.23.6",
     "@supabase/ssr": "^0.5.0",
     "@supabase/supabase-js": "^2.45.0",
+    "@uiw/codemirror-theme-basic": "^4.25.4",
+    "@uiw/react-codemirror": "^4.23.6",
     "next": "15.0.5",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"

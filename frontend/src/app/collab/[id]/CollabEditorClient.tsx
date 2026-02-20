@@ -75,11 +75,14 @@ type RemoteCursor = {
 
 // ─── CodeMirror cursor decorations (module-level so refs are stable) ────────
 
+// Inject the fade-in keyframes once per page load (browser-only)
+let cursorKeyframesInjected = false;
+
 class RemoteCursorWidget extends WidgetType {
   constructor(
     private readonly color: string,
     private readonly label: string,
-    private readonly showLabelBelow: boolean
+    private readonly nearTop: boolean
   ) {
     super();
   }
@@ -88,15 +91,23 @@ class RemoteCursorWidget extends WidgetType {
     return (
       this.color === other.color &&
       this.label === other.label &&
-      this.showLabelBelow === other.showLabelBelow
+      this.nearTop === other.nearTop
     );
   }
 
   toDOM(): HTMLElement {
+    // Inject @keyframes once so we can reference it in inline animation
+    if (!cursorKeyframesInjected && typeof document !== "undefined") {
+      const s = document.createElement("style");
+      s.textContent =
+        "@keyframes cm-cursor-fadein{from{opacity:0;transform:translateY(2px)}to{opacity:1;transform:none}}";
+      document.head.appendChild(s);
+      cursorKeyframesInjected = true;
+    }
+
     const wrap = document.createElement("span");
     wrap.setAttribute("aria-hidden", "true");
-    wrap.style.cssText =
-      "position:relative;display:inline-block;overflow:visible;";
+    wrap.style.cssText = "position:relative;display:inline-block;overflow:visible;";
 
     const bar = document.createElement("span");
     bar.style.cssText = [
@@ -112,14 +123,16 @@ class RemoteCursorWidget extends WidgetType {
 
     const tag = document.createElement("span");
     tag.textContent = this.label;
-    tag.className = "cursor-pill-fade-in";
+    // When near the top of the editor show label below the cursor, otherwise above
+    const vPos = this.nearTop ? "top:calc(100% + 3px)" : "bottom:calc(100% + 3px)";
     tag.style.cssText = [
       "position:absolute",
-      this.showLabelBelow ? "top:100%" : "bottom:100%",
+      vPos,
       "left:0",
       `background:${this.color}`,
       "color:#fff",
       "font-size:10px",
+      "font-weight:500",
       "font-family:sans-serif",
       "line-height:1.4",
       "padding:2px 6px",
@@ -128,6 +141,7 @@ class RemoteCursorWidget extends WidgetType {
       "pointer-events:none",
       "z-index:100",
       "user-select:none",
+      "animation:cm-cursor-fadein 150ms ease forwards",
     ].join(";");
 
     wrap.appendChild(bar);
@@ -155,6 +169,8 @@ const cursorsField = StateField.define<RemoteCursor[]>({
 function buildCursorDecorations(view: EditorView): DecorationSet {
   const cursors = view.state.field(cursorsField);
   const ranges: Range<Decoration>[] = [];
+  // Cache the editor rect once per rebuild — coordsAtPos uses client coordinates
+  const editorRect = view.scrollDOM.getBoundingClientRect();
 
   for (const c of cursors) {
     if (!c.position) continue;
@@ -163,11 +179,13 @@ function buildCursorDecorations(view: EditorView): DecorationSet {
       if (c.position.line < 1 || c.position.line > lineCount) continue;
       const line = view.state.doc.line(c.position.line);
       const pos = Math.min(line.from + c.position.ch, line.to);
-      const label = displayNameFromEmail(c.userEmail);
-      const showLabelBelow = c.position.line <= 2;
+      const label = c.userEmail.split("@")[0];
+      // If the cursor is within ~28px of the top edge, flip the label below
+      const coords = view.coordsAtPos(pos);
+      const nearTop = coords !== null && coords.top - editorRect.top < 28;
       ranges.push(
         Decoration.widget({
-          widget: new RemoteCursorWidget(c.userColor, label, showLabelBelow),
+          widget: new RemoteCursorWidget(c.userColor, label, nearTop),
           side: 1,
         }).range(pos)
       );
@@ -507,6 +525,8 @@ export function CollabEditorClient({
   const uniqueMembers = Array.from(
     new Map(members.map((m) => [m.user_email, m])).values()
   );
+  // Emails of users who have sent a cursor broadcast recently (stale timer hasn't fired)
+  const activeTypers = new Set(otherCursors.map((c) => c.userEmail));
 
   return (
     <div className="h-screen flex flex-col bg-surface">
@@ -581,14 +601,14 @@ export function CollabEditorClient({
                   >
                     <span className="absolute right-0 top-0 h-2 w-2 rounded-full bg-green-500 animate-pulse" />
                   </span>
-                  <span className="text-zinc-300 truncate max-w-[120px]">
+                  <span className="text-zinc-300 truncate max-w-[100px]">
                     {m.user_email === userEmail ? "You" : m.user_email}
                   </span>
-                  {typingEmails.has(m.user_email) && (
+                  {m.user_email !== userEmail && activeTypers.has(m.user_email) && (
                     <span
-                      className="h-2 w-2 rounded-full flex-shrink-0 animate-pulse"
+                      className="shrink-0 w-1.5 h-1.5 rounded-full animate-pulse"
                       style={{ backgroundColor: m.user_color }}
-                      title="Typing..."
+                      title="Typing…"
                     />
                   )}
                 </div>
