@@ -1,25 +1,6 @@
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
-export type RoomWithDocument = {
-  id: string;
-  name: string;
-  invite_slug: string;
-  created_by: string;
-  created_at: string;
-  updated_at: string;
-  document_id: string | null;
-  document_content: string;
-  document_language: string;
-};
-
-export type RoomResponse = {
-  id: string;
-  name: string;
-  invite_slug: string;
-  created_by: string;
-  created_at: string;
-  updated_at: string;
-};
+// ─── Core helper ──────────────────────────────────────────────────────────────
 
 async function fetchWithAuth(
   path: string,
@@ -40,6 +21,29 @@ async function fetchWithAuth(
   }
   return res.json();
 }
+
+// ─── Rooms ────────────────────────────────────────────────────────────────────
+
+export type RoomWithDocument = {
+  id: string;
+  name: string;
+  invite_slug: string;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+  document_id: string | null;
+  document_content: string;
+  document_language: string;
+};
+
+export type RoomResponse = {
+  id: string;
+  name: string;
+  invite_slug: string;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+};
 
 export async function createRoom(
   token: string,
@@ -72,7 +76,8 @@ export async function joinRoom(
   });
 }
 
-// Collab rooms (real-time collaborative coding)
+// ─── Collab Rooms ─────────────────────────────────────────────────────────────
+
 export type CollabRoomCreatePayload = {
   name: string;
   description?: string;
@@ -105,9 +110,7 @@ export type CollabRoomDetail = {
   is_member: boolean;
 };
 
-export async function listCollabRooms(
-  token: string
-): Promise<CollabRoomResponse[]> {
+export async function listCollabRooms(token: string): Promise<CollabRoomResponse[]> {
   return fetchWithAuth("/collab/rooms", token);
 }
 
@@ -128,31 +131,19 @@ export async function getCollabRoom(
   return fetchWithAuth(`/collab/rooms/${roomId}`, token);
 }
 
-export async function deleteCollabRoom(
-  token: string,
-  roomId: string
-): Promise<void> {
-  await fetchWithAuth(`/collab/rooms/${roomId}`, token, {
-    method: "DELETE",
-  });
+export async function deleteCollabRoom(token: string, roomId: string): Promise<void> {
+  await fetchWithAuth(`/collab/rooms/${roomId}`, token, { method: "DELETE" });
 }
 
 export async function joinCollabRoom(
   token: string,
   roomId: string
 ): Promise<CollabRoomDetail> {
-  return fetchWithAuth(`/collab/rooms/${roomId}/join`, token, {
-    method: "POST",
-  });
+  return fetchWithAuth(`/collab/rooms/${roomId}/join`, token, { method: "POST" });
 }
 
-export async function leaveCollabRoom(
-  token: string,
-  roomId: string
-): Promise<void> {
-  await fetchWithAuth(`/collab/rooms/${roomId}/leave`, token, {
-    method: "POST",
-  });
+export async function leaveCollabRoom(token: string, roomId: string): Promise<void> {
+  await fetchWithAuth(`/collab/rooms/${roomId}/leave`, token, { method: "POST" });
 }
 
 export async function saveCollabRoomCode(
@@ -163,5 +154,217 @@ export async function saveCollabRoomCode(
   await fetchWithAuth(`/collab/rooms/${roomId}/code`, token, {
     method: "PATCH",
     body: JSON.stringify({ code }),
+  });
+}
+
+// ─── Submissions & Review ─────────────────────────────────────────────────────
+
+export type Submission = {
+  id: string;
+  title: string;
+  language: string;
+  code: string;
+  status: "pending" | "reviewed" | "approved" | "rejected";
+  author_id: string;
+  author_email: string;
+  created_at: string;
+  room_name?: string;
+  room_id?: string;
+  score?: number;
+  feedback?: string;
+};
+
+export type ReviewComment = {
+  id: string;
+  submission_id: string;
+  author_id: string;
+  author_email: string;
+  body: string;
+  line_number?: number;
+  created_at: string;
+};
+
+export async function listSubmissions(token: string): Promise<Submission[]> {
+  return fetchWithAuth("/submissions", token);
+}
+
+export async function getSubmission(token: string, id: string): Promise<Submission> {
+  return fetchWithAuth(`/submissions/${id}`, token);
+}
+
+export async function createSubmission(
+  token: string,
+  payload: { title: string; language: string; code: string; room_id?: string }
+): Promise<Submission> {
+  return fetchWithAuth("/submissions", token, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function listReviewComments(
+  token: string,
+  submissionId: string
+): Promise<ReviewComment[]> {
+  return fetchWithAuth(`/submissions/${submissionId}/comments`, token);
+}
+
+export async function addReviewComment(
+  token: string,
+  submissionId: string,
+  body: string,
+  lineNumber?: number
+): Promise<ReviewComment> {
+  return fetchWithAuth(`/submissions/${submissionId}/comments`, token, {
+    method: "POST",
+    body: JSON.stringify({ body, line_number: lineNumber }),
+  });
+}
+
+export async function approveSubmission(
+  token: string,
+  submissionId: string,
+  feedback?: string
+): Promise<Submission> {
+  return fetchWithAuth(`/submissions/${submissionId}/approve`, token, {
+    method: "POST",
+    body: JSON.stringify({ feedback }),
+  });
+}
+
+export async function rejectSubmission(
+  token: string,
+  submissionId: string,
+  feedback?: string
+): Promise<Submission> {
+  return fetchWithAuth(`/submissions/${submissionId}/reject`, token, {
+    method: "POST",
+    body: JSON.stringify({ feedback }),
+  });
+}
+
+// ─── Leaderboard ─────────────────────────────────────────────────────────────
+
+export type LeaderboardEntry = {
+  rank: number;
+  user_id: string;
+  email: string;
+  display_name?: string;
+  score: number;
+  submissions_count: number;
+  approved_count: number;
+};
+
+export async function getLeaderboard(token: string): Promise<LeaderboardEntry[]> {
+  return fetchWithAuth("/leaderboard", token);
+}
+
+export async function getMyRank(token: string): Promise<LeaderboardEntry | null> {
+  return fetchWithAuth("/leaderboard/me", token).catch(() => null);
+}
+
+// ─── User Profile ─────────────────────────────────────────────────────────────
+
+export type UserProfile = {
+  user_id: string;
+  email: string;
+  display_name?: string;
+  bio?: string;
+  avatar_url?: string;
+  score: number;
+  rank: number | null;
+  submissions_count: number;
+  approved_count: number;
+  created_at: string;
+};
+
+export async function getProfile(
+  token: string,
+  userId?: string
+): Promise<UserProfile> {
+  return fetchWithAuth(userId ? `/profile/${userId}` : "/profile/me", token);
+}
+
+export async function updateProfile(
+  token: string,
+  payload: { display_name?: string; bio?: string }
+): Promise<UserProfile> {
+  return fetchWithAuth("/profile/me", token, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+// ─── Organisation ─────────────────────────────────────────────────────────────
+
+export type Organisation = {
+  id: string;
+  name: string;
+  invite_code?: string;
+  created_by: string;
+  created_at: string;
+  role?: string;
+};
+
+export type OrgMember = {
+  id: string;
+  organisation_id: string;
+  user_id: string;
+  user_email?: string;
+  role: string;
+};
+
+export type OrgChatMessage = {
+  id: string;
+  user_email: string;
+  user_name: string;
+  body: string;
+  created_at: string;
+};
+
+export async function getMyOrg(token: string): Promise<Organisation | null> {
+  return fetchWithAuth("/organisations/me", token).catch(() => null);
+}
+
+export async function getOrgMembers(
+  token: string,
+  orgId: string
+): Promise<OrgMember[]> {
+  return fetchWithAuth(`/organisations/${orgId}/members`, token).catch(() => []);
+}
+
+export async function createOrg(token: string, name: string): Promise<Organisation> {
+  return fetchWithAuth("/organisations", token, {
+    method: "POST",
+    body: JSON.stringify({ name }),
+  });
+}
+
+export async function joinOrg(
+  token: string,
+  inviteCode: string
+): Promise<Organisation> {
+  return fetchWithAuth("/organisations/join", token, {
+    method: "POST",
+    body: JSON.stringify({ invite_code: inviteCode }),
+  });
+}
+
+export async function getOrgChatMessages(
+  token: string,
+  orgId: string
+): Promise<OrgChatMessage[]> {
+  return fetchWithAuth(`/organisations/${orgId}/chat`, token).catch(() => []);
+}
+
+export async function sendOrgChatMessage(
+  token: string,
+  orgId: string,
+  body: string,
+  userName?: string
+): Promise<OrgChatMessage> {
+  return fetchWithAuth(`/organisations/${orgId}/chat`, token, {
+    method: "POST",
+    body: JSON.stringify({ body, user_name: userName }),
   });
 }
