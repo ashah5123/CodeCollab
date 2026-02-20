@@ -194,7 +194,7 @@ export async function getSubmission(token: string, id: string): Promise<Submissi
 
 export async function createSubmission(
   token: string,
-  payload: { title: string; language: string; code: string; room_id?: string }
+  payload: { title: string; language: string; code: string; description?: string; room_id?: string }
 ): Promise<Submission> {
   return fetchWithAuth("/api/v1/submissions", token, {
     method: "POST",

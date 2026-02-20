@@ -3,11 +3,17 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import CodeMirror from "@uiw/react-codemirror";
+import { basicDark } from "@uiw/codemirror-theme-basic";
+import { javascript } from "@codemirror/lang-javascript";
+import { python } from "@codemirror/lang-python";
+import { EditorView } from "@codemirror/view";
 import { createClient } from "@/lib/supabase";
 import {
   listCollabRooms,
   listSubmissions,
   getMyRank,
+  createSubmission,
   type CollabRoomResponse,
   type Submission,
   type LeaderboardEntry,
@@ -28,6 +34,27 @@ const LANG_COLORS: Record<string, string> = {
   typescript: "text-blue-400",
   json: "text-amber-400",
 };
+
+const LANGUAGES = [
+  { value: "python",     label: "Python",     pill: "bg-green-500/15 text-green-400 border-green-500/30" },
+  { value: "javascript", label: "JavaScript",  pill: "bg-yellow-500/15 text-yellow-400 border-yellow-500/30" },
+  { value: "typescript", label: "TypeScript",  pill: "bg-blue-500/15 text-blue-400 border-blue-500/30" },
+  { value: "sql",        label: "SQL",         pill: "bg-orange-500/15 text-orange-400 border-orange-500/30" },
+  { value: "go",         label: "Go",          pill: "bg-cyan-500/15 text-cyan-400 border-cyan-500/30" },
+  { value: "rust",       label: "Rust",        pill: "bg-red-500/15 text-red-400 border-red-500/30" },
+  { value: "java",       label: "Java",        pill: "bg-amber-500/15 text-amber-400 border-amber-500/30" },
+];
+
+const whiteCursor = EditorView.theme({
+  ".cm-cursor, .cm-dropCursor": { borderLeftColor: "#ffffff" },
+});
+
+function getLangExtension(lang: string) {
+  if (lang === "python") return [python()];
+  if (lang === "typescript") return [javascript({ typescript: true })];
+  if (lang === "javascript") return [javascript()];
+  return [];
+}
 
 function StatCard({
   label,
@@ -75,10 +102,20 @@ function MiniBarChart({ data }: { data: number[] }) {
 export default function DashboardPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
+  const [token, setToken] = useState<string | null>(null);
   const [rooms, setRooms] = useState<CollabRoomResponse[]>([]);
   const [submissions, setSubmissions] = useState<Submission[]>([]);
   const [myRank, setMyRank] = useState<LeaderboardEntry | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // Modal state
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalTitle, setModalTitle] = useState("");
+  const [modalLang, setModalLang] = useState("python");
+  const [modalCode, setModalCode] = useState("");
+  const [modalDesc, setModalDesc] = useState("");
+  const [modalSubmitting, setModalSubmitting] = useState(false);
+  const [modalError, setModalError] = useState<string | null>(null);
 
   const weekActivity = [3, 5, 2, 8, 4, 1, 6];
 
@@ -89,13 +126,14 @@ export default function DashboardPage() {
     setEmail(user.email ?? "");
 
     const { data: { session } } = await supabase.auth.getSession();
-    const token = session?.access_token;
-    if (!token) { router.replace("/login"); return; }
+    const tok = session?.access_token;
+    if (!tok) { router.replace("/login"); return; }
+    setToken(tok);
 
     const [roomsData, subsData, rankData] = await Promise.allSettled([
-      listCollabRooms(token),
-      listSubmissions(token),
-      getMyRank(token),
+      listCollabRooms(tok),
+      listSubmissions(tok),
+      getMyRank(tok),
     ]);
 
     if (roomsData.status === "fulfilled") setRooms(roomsData.value);
@@ -105,6 +143,36 @@ export default function DashboardPage() {
   }, [router]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  const openModal = () => {
+    setModalTitle("");
+    setModalLang("python");
+    setModalCode("");
+    setModalDesc("");
+    setModalError(null);
+    setModalOpen(true);
+  };
+
+  const handleModalSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!token || !modalTitle.trim() || !modalCode.trim()) return;
+    setModalSubmitting(true);
+    setModalError(null);
+    try {
+      const result = await createSubmission(token, {
+        title: modalTitle.trim(),
+        language: modalLang,
+        code: modalCode,
+        description: modalDesc.trim(),
+      });
+      setModalOpen(false);
+      router.push(`/review/${result.id}`);
+    } catch (err) {
+      setModalError((err as Error).message || "Submission failed.");
+    } finally {
+      setModalSubmitting(false);
+    }
+  };
 
   const recentSubs = submissions.slice(0, 6);
   const approvedCount = submissions.filter((s) => s.status === "approved").length;
@@ -117,7 +185,16 @@ export default function DashboardPage() {
         {/* Header */}
         <header className="shrink-0 border-b border-border bg-surface-muted/20 px-6 h-14 flex items-center justify-between">
           <h1 className="font-semibold text-white">Dashboard</h1>
-          <UserMenu />
+          <div className="flex items-center gap-3">
+            <button
+              onClick={openModal}
+              className="flex items-center gap-2 rounded-lg bg-accent px-3 py-1.5 text-sm font-medium text-white hover:opacity-90 transition-opacity"
+            >
+              <PlusIcon className="h-4 w-4" />
+              New Review
+            </button>
+            <UserMenu />
+          </div>
         </header>
 
         <main className="flex-1 overflow-y-auto px-6 py-6 space-y-6">
@@ -173,7 +250,11 @@ export default function DashboardPage() {
                     <Link href="/collab" className="text-accent hover:underline">
                       collab room
                     </Link>
-                    .
+                    {" "}or use the{" "}
+                    <button onClick={openModal} className="text-accent hover:underline">
+                      New Review
+                    </button>
+                    {" "}button.
                   </p>
                 </div>
               ) : (
@@ -306,6 +387,119 @@ export default function DashboardPage() {
           </div>
         </main>
       </div>
+
+      {/* New Review Modal */}
+      {modalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
+          onClick={(e) => { if (e.target === e.currentTarget) setModalOpen(false); }}
+        >
+          <div className="w-full max-w-2xl rounded-2xl border border-border bg-surface shadow-2xl flex flex-col max-h-[90vh]">
+            {/* Modal header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
+              <h2 className="text-base font-semibold text-white">New Review</h2>
+              <button
+                onClick={() => setModalOpen(false)}
+                className="text-zinc-500 hover:text-white transition-colors rounded-lg p-1 hover:bg-surface-muted"
+              >
+                <XIcon className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Modal body */}
+            <form onSubmit={handleModalSubmit} className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+              {/* Title */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-zinc-400">Title</label>
+                <input
+                  type="text"
+                  value={modalTitle}
+                  onChange={(e) => setModalTitle(e.target.value)}
+                  placeholder="e.g. Binary search implementation"
+                  required
+                  className="w-full rounded-lg border border-border bg-surface-muted/40 px-3 py-2.5 text-sm text-white placeholder:text-zinc-600 focus:border-accent focus:outline-none"
+                />
+              </div>
+
+              {/* Language pills */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-zinc-400">Language</label>
+                <div className="flex flex-wrap gap-2">
+                  {LANGUAGES.map((l) => (
+                    <button
+                      key={l.value}
+                      type="button"
+                      onClick={() => setModalLang(l.value)}
+                      className={`rounded-full border px-3 py-1 text-xs font-medium transition-all ${
+                        modalLang === l.value
+                          ? `${l.pill} ring-2 ring-offset-1 ring-offset-surface ring-current`
+                          : "border-border bg-surface-muted/20 text-zinc-500 hover:text-zinc-300 hover:border-zinc-600"
+                      }`}
+                    >
+                      {l.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Code editor */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-zinc-400">Code</label>
+                <div className="rounded-lg overflow-hidden border border-border" style={{ height: 260 }}>
+                  <CodeMirror
+                    value={modalCode}
+                    height="260px"
+                    theme={basicDark}
+                    extensions={[...getLangExtension(modalLang), whiteCursor]}
+                    onChange={(val) => setModalCode(val)}
+                    basicSetup={{ lineNumbers: true, foldGutter: false }}
+                    className="h-full text-left text-sm"
+                  />
+                </div>
+              </div>
+
+              {/* Problem description */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-zinc-400">
+                  Problem Description
+                  <span className="ml-1 text-zinc-600 font-normal">(optional)</span>
+                </label>
+                <textarea
+                  value={modalDesc}
+                  onChange={(e) => setModalDesc(e.target.value)}
+                  placeholder="Describe the problem or what you'd like reviewed…"
+                  rows={3}
+                  className="w-full rounded-lg border border-border bg-surface-muted/40 px-3 py-2.5 text-sm text-white placeholder:text-zinc-600 focus:border-accent focus:outline-none resize-none"
+                />
+              </div>
+
+              {modalError && (
+                <p className="text-sm text-red-400">{modalError}</p>
+              )}
+            </form>
+
+            {/* Modal footer */}
+            <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-border shrink-0">
+              <button
+                type="button"
+                onClick={() => setModalOpen(false)}
+                className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-zinc-400 hover:text-white hover:border-zinc-500 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                form="new-review-form"
+                disabled={modalSubmitting || !modalTitle.trim() || !modalCode.trim()}
+                onClick={handleModalSubmit}
+                className="rounded-lg bg-accent px-5 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50 transition-opacity"
+              >
+                {modalSubmitting ? "Submitting…" : "Submit for Review"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -347,6 +541,20 @@ function BuildingIcon({ className }: { className?: string }) {
     <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
         d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+    </svg>
+  );
+}
+function PlusIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+    </svg>
+  );
+}
+function XIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
     </svg>
   );
 }
