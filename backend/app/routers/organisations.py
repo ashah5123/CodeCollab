@@ -17,22 +17,27 @@ router = APIRouter(prefix="/organisations", tags=["organisations"])
 @router.get("/me")
 def get_my_organisations(user: JWTPayload = Depends(get_current_user)):
     """Return all organisations the current user is a member of."""
-    members = (
-        supabase_admin.table("organisation_members")
-        .select("organisation_id")
-        .eq("user_id", user.sub)
-        .execute()
-    )
-    if not members.data:
-        return []
-    organisation_ids = [m["organisation_id"] for m in members.data]
-    rows = (
-        supabase_admin.table("organisations")
-        .select("*")
-        .in_("id", organisation_ids)
-        .execute()
-    )
-    return rows.data or []
+    try:
+        members = (
+            supabase_admin.table("organisation_members")
+            .select("organisation_id")
+            .eq("user_id", user.sub)
+            .execute()
+        )
+        if not members.data:
+            return []
+        organisation_ids = [m["organisation_id"] for m in members.data]
+        rows = (
+            supabase_admin.table("organisations")
+            .select("*")
+            .in_("id", organisation_ids)
+            .execute()
+        )
+        return rows.data or []
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # 2. POST /organisations
@@ -42,20 +47,25 @@ def create_organisation(
     user: JWTPayload = Depends(get_current_user),
 ):
     """Create organisation and add creator as owner."""
-    name = body.get("name") or "New Organisation"
-    slug = body.get("slug") or name.lower().replace(" ", "-")[:50]
-    row = (
-        supabase_admin.table("organisations")
-        .insert({"name": name, "slug": slug, "created_by": user.sub})
-        .execute()
-    )
-    if not row.data or len(row.data) == 0:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to create")
-    org = row.data[0]
-    supabase_admin.table("organisation_members").insert(
-        {"organisation_id": org["id"], "user_id": user.sub, "role": "owner"}
-    ).execute()
-    return org
+    try:
+        name = body.get("name") or "New Organisation"
+        slug = body.get("slug") or name.lower().replace(" ", "-")[:50]
+        row = (
+            supabase_admin.table("organisations")
+            .insert({"name": name, "slug": slug, "created_by": user.sub})
+            .execute()
+        )
+        if not row.data or len(row.data) == 0:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to create")
+        org = row.data[0]
+        supabase_admin.table("organisation_members").insert(
+            {"organisation_id": org["id"], "user_id": user.sub, "role": "owner"}
+        ).execute()
+        return org
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # 3. POST /organisations/join
@@ -65,24 +75,29 @@ def join_organisation_by_code(
     user: JWTPayload = Depends(get_current_user),
 ):
     """Join an organisation by invite_code."""
-    invite_code = body.get("invite_code")
-    if not invite_code:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="invite_code required")
-    org = (
-        supabase_admin.table("organisations")
-        .select("*")
-        .eq("invite_code", invite_code)
-        .single()
-        .execute()
-    )
-    if not org.data:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invalid invite code")
-    organisation_id = str(org.data["id"])
-    supabase_admin.table("organisation_members").upsert(
-        {"organisation_id": organisation_id, "user_id": user.sub, "role": "member"},
-        on_conflict="organisation_id,user_id",
-    ).execute()
-    return {"joined": organisation_id}
+    try:
+        invite_code = body.get("invite_code")
+        if not invite_code:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="invite_code required")
+        org = (
+            supabase_admin.table("organisations")
+            .select("*")
+            .eq("invite_code", invite_code)
+            .single()
+            .execute()
+        )
+        if not org.data:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invalid invite code")
+        organisation_id = str(org.data["id"])
+        supabase_admin.table("organisation_members").upsert(
+            {"organisation_id": organisation_id, "user_id": user.sub, "role": "member"},
+            on_conflict="organisation_id,user_id",
+        ).execute()
+        return {"joined": organisation_id}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # 4. GET /organisations/{organisation_id}
@@ -92,25 +107,30 @@ def get_organisation(
     user: JWTPayload = Depends(get_current_user),
 ):
     """Get one organisation by id."""
-    row = (
-        supabase_admin.table("organisations")
-        .select("*")
-        .eq("id", organisation_id)
-        .single()
-        .execute()
-    )
-    if not row.data:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Organisation not found")
-    member = (
-        supabase_admin.table("organisation_members")
-        .select("id")
-        .eq("organisation_id", organisation_id)
-        .eq("user_id", user.sub)
-        .execute()
-    )
-    if not member.data:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not a member")
-    return row.data
+    try:
+        row = (
+            supabase_admin.table("organisations")
+            .select("*")
+            .eq("id", organisation_id)
+            .single()
+            .execute()
+        )
+        if not row.data:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Organisation not found")
+        member = (
+            supabase_admin.table("organisation_members")
+            .select("id")
+            .eq("organisation_id", organisation_id)
+            .eq("user_id", user.sub)
+            .execute()
+        )
+        if not member.data:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not a member")
+        return row.data
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # 5. GET /organisations/{organisation_id}/members
@@ -120,22 +140,27 @@ def list_organisation_members(
     user: JWTPayload = Depends(get_current_user),
 ):
     """List members of an organisation."""
-    member = (
-        supabase_admin.table("organisation_members")
-        .select("id")
-        .eq("organisation_id", organisation_id)
-        .eq("user_id", user.sub)
-        .execute()
-    )
-    if not member.data:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not a member")
-    rows = (
-        supabase_admin.table("organisation_members")
-        .select("*")
-        .eq("organisation_id", organisation_id)
-        .execute()
-    )
-    return rows.data or []
+    try:
+        member = (
+            supabase_admin.table("organisation_members")
+            .select("id")
+            .eq("organisation_id", organisation_id)
+            .eq("user_id", user.sub)
+            .execute()
+        )
+        if not member.data:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not a member")
+        rows = (
+            supabase_admin.table("organisation_members")
+            .select("*")
+            .eq("organisation_id", organisation_id)
+            .execute()
+        )
+        return rows.data or []
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # 6. GET /organisations/{organisation_id}/chat
@@ -145,23 +170,28 @@ def list_org_chat_messages(
     user: JWTPayload = Depends(get_current_user),
 ):
     """List org chat messages."""
-    member = (
-        supabase_admin.table("organisation_members")
-        .select("id")
-        .eq("organisation_id", organisation_id)
-        .eq("user_id", user.sub)
-        .execute()
-    )
-    if not member.data:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not a member")
-    rows = (
-        supabase_admin.table("org_chat_messages")
-        .select("*")
-        .eq("organisation_id", organisation_id)
-        .order("created_at", desc=False)
-        .execute()
-    )
-    return rows.data or []
+    try:
+        member = (
+            supabase_admin.table("organisation_members")
+            .select("id")
+            .eq("organisation_id", organisation_id)
+            .eq("user_id", user.sub)
+            .execute()
+        )
+        if not member.data:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not a member")
+        rows = (
+            supabase_admin.table("org_chat_messages")
+            .select("*")
+            .eq("organisation_id", organisation_id)
+            .order("created_at", desc=False)
+            .execute()
+        )
+        return rows.data or []
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # 7. POST /organisations/{organisation_id}/chat
@@ -172,23 +202,28 @@ def post_org_chat_message(
     user: JWTPayload = Depends(get_current_user),
 ):
     """Post a message to org chat."""
-    member = (
-        supabase_admin.table("organisation_members")
-        .select("id")
-        .eq("organisation_id", organisation_id)
-        .eq("user_id", user.sub)
-        .execute()
-    )
-    if not member.data:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not a member")
-    content = (body.get("content") or "").strip()
-    if not content:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="content required")
-    row = (
-        supabase_admin.table("org_chat_messages")
-        .insert({"organisation_id": organisation_id, "user_id": user.sub, "content": content})
-        .execute()
-    )
-    if not row.data or len(row.data) == 0:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to send")
-    return row.data[0]
+    try:
+        member = (
+            supabase_admin.table("organisation_members")
+            .select("id")
+            .eq("organisation_id", organisation_id)
+            .eq("user_id", user.sub)
+            .execute()
+        )
+        if not member.data:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not a member")
+        content = (body.get("content") or "").strip()
+        if not content:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="content required")
+        row = (
+            supabase_admin.table("org_chat_messages")
+            .insert({"organisation_id": organisation_id, "user_id": user.sub, "content": content})
+            .execute()
+        )
+        if not row.data or len(row.data) == 0:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to send")
+        return row.data[0]
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
