@@ -28,3 +28,15 @@ body {
   background: hsl(var(--surface-muted));
   border-right: 1px solid hsl(var(--border));
 }
+
+@keyframes cursorPillFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.cursor-pill-fade-in {
+  animation: cursorPillFadeIn 0.2s ease-out;
+}

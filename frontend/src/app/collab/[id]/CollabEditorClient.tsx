@@ -58,6 +58,13 @@ function colorFromEmail(email: string): string {
   return USER_COLORS[idx];
 }
 
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
+function displayNameFromEmail(email: string): string {
+  const beforeAt = email.split("@")[0];
+  return beforeAt || email;
+}
+
 // ─── Remote cursor types ────────────────────────────────────────────────────
 
 type RemoteCursor = {
@@ -69,12 +76,20 @@ type RemoteCursor = {
 // ─── CodeMirror cursor decorations (module-level so refs are stable) ────────
 
 class RemoteCursorWidget extends WidgetType {
-  constructor(private readonly color: string, private readonly label: string) {
+  constructor(
+    private readonly color: string,
+    private readonly label: string,
+    private readonly showLabelBelow: boolean
+  ) {
     super();
   }
 
   eq(other: RemoteCursorWidget): boolean {
-    return this.color === other.color && this.label === other.label;
+    return (
+      this.color === other.color &&
+      this.label === other.label &&
+      this.showLabelBelow === other.showLabelBelow
+    );
   }
 
   toDOM(): HTMLElement {
@@ -97,17 +112,18 @@ class RemoteCursorWidget extends WidgetType {
 
     const tag = document.createElement("span");
     tag.textContent = this.label;
+    tag.className = "cursor-pill-fade-in";
     tag.style.cssText = [
       "position:absolute",
-      "bottom:100%",
+      this.showLabelBelow ? "top:100%" : "bottom:100%",
       "left:0",
       `background:${this.color}`,
       "color:#fff",
       "font-size:10px",
       "font-family:sans-serif",
       "line-height:1.4",
-      "padding:1px 4px",
-      "border-radius:3px 3px 3px 0",
+      "padding:2px 6px",
+      "border-radius:9999px",
       "white-space:nowrap",
       "pointer-events:none",
       "z-index:100",
@@ -147,10 +163,11 @@ function buildCursorDecorations(view: EditorView): DecorationSet {
       if (c.position.line < 1 || c.position.line > lineCount) continue;
       const line = view.state.doc.line(c.position.line);
       const pos = Math.min(line.from + c.position.ch, line.to);
-      const label = c.userEmail.split("@")[0];
+      const label = displayNameFromEmail(c.userEmail);
+      const showLabelBelow = c.position.line <= 2;
       ranges.push(
         Decoration.widget({
-          widget: new RemoteCursorWidget(c.userColor, label),
+          widget: new RemoteCursorWidget(c.userColor, label, showLabelBelow),
           side: 1,
         }).range(pos)
       );
@@ -289,25 +306,23 @@ export function CollabEditorClient({
   const channelActionsRef = useRef<ReturnType<typeof setupCollabChannel> | null>(null);
   const lastCursorRef = useRef<CursorPosition>(null);
   const editorViewRef = useRef<EditorView | null>(null);
-  // Per-user stale-cursor timeouts: if no broadcast received in CURSOR_STALE_MS, remove their decorations
   const cursorTimeoutsRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const supabase = createClient();
 
-  // ── Dispatch cursor decorations into CodeMirror whenever state changes ──
+  const typingEmails = new Set(otherCursors.map((c) => c.userEmail));
+
   useEffect(() => {
     const view = editorViewRef.current;
     if (!view) return;
     view.dispatch({ effects: setCursorsEffect.of(otherCursors) });
   }, [otherCursors]);
 
-  // ── Dispatch selection decorations into CodeMirror whenever state changes ──
   useEffect(() => {
     const view = editorViewRef.current;
     if (!view) return;
     view.dispatch({ effects: setSelectionsEffect.of(otherSelections) });
   }, [otherSelections]);
 
-  // ── Remove both cursor and selection decorations for a given user ─────────
   const removeUserDecorations = useCallback((email: string) => {
     setOtherCursors((prev) => prev.filter((c) => c.userEmail !== email));
     setOtherSelections((prev) => prev.filter((s) => s.userEmail !== email));
@@ -569,6 +584,13 @@ export function CollabEditorClient({
                   <span className="text-zinc-300 truncate max-w-[120px]">
                     {m.user_email === userEmail ? "You" : m.user_email}
                   </span>
+                  {typingEmails.has(m.user_email) && (
+                    <span
+                      className="h-2 w-2 rounded-full flex-shrink-0 animate-pulse"
+                      style={{ backgroundColor: m.user_color }}
+                      title="Typing..."
+                    />
+                  )}
                 </div>
               ))}
             </div>
