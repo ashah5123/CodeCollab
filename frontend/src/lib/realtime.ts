@@ -21,6 +21,13 @@ export type CursorPayload = {
   cursorPosition: CursorPosition;
 };
 
+export type SelectionPayload = {
+  userEmail: string;
+  userColor: string;
+  selectionFrom: number | null;
+  selectionTo: number | null;
+};
+
 export type RoomPresenceState = Record<
   string,
   Array<{ user_email: string; user_color: string }>
@@ -207,6 +214,7 @@ export function subscribeToRoomChat(
 export type CollabChannelCallbacks = {
   onCode: (payload: CodeChangePayload) => void;
   onCursor: (payload: CursorPayload) => void;
+  onSelection: (payload: SelectionPayload) => void;
   onPresenceSync: (state: RoomPresenceState) => void;
   onChat: (msg: RoomChatMessage) => void;
 };
@@ -222,6 +230,12 @@ export type CollabChannelActions = {
     userEmail: string,
     userColor: string,
     cursorPosition: CursorPosition
+  ) => void;
+  sendSelection: (
+    userEmail: string,
+    userColor: string,
+    from: number | null,
+    to: number | null
   ) => void;
   sendChat: (userEmail: string, message: string) => void;
   trackPresence: (userEmail: string, userColor: string) => void;
@@ -245,6 +259,9 @@ export function setupCollabChannel(
     })
     .on("broadcast", { event: "cursor" }, ({ payload }) => {
       callbacks.onCursor(payload as CursorPayload);
+    })
+    .on("broadcast", { event: "selection" }, ({ payload }) => {
+      callbacks.onSelection(payload as SelectionPayload);
     })
     .on("broadcast", { event: "chat" }, ({ payload }) => {
       callbacks.onChat(payload as RoomChatMessage);
@@ -277,6 +294,13 @@ export function setupCollabChannel(
         type: "broadcast",
         event: "cursor",
         payload: { userEmail, userColor, cursorPosition },
+      });
+    },
+    sendSelection: (userEmail, userColor, from, to) => {
+      channel.send({
+        type: "broadcast",
+        event: "selection",
+        payload: { userEmail, userColor, selectionFrom: from, selectionTo: to },
       });
     },
     sendChat: (userEmail, message) => {

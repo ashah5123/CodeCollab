@@ -22,6 +22,7 @@ import {
   type CursorPosition,
   type RoomPresenceState,
   type RoomChatMessage,
+  type SelectionPayload,
 } from "@/lib/realtime";
 import { saveCollabRoomCode } from "@/lib/api";
 
@@ -178,6 +179,77 @@ const cursorPlugin = ViewPlugin.fromClass(
   { decorations: (v) => v.decorations }
 );
 
+// ─── Remote selection decorations ───────────────────────────────────────────
+
+type RemoteSelection = {
+  userEmail: string;
+  userColor: string;
+  from: number;
+  to: number;
+};
+
+function hexToRgba(hex: string, alpha: number): string {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+const setSelectionsEffect = StateEffect.define<RemoteSelection[]>();
+
+const selectionsField = StateField.define<RemoteSelection[]>({
+  create: () => [],
+  update(value, tr) {
+    for (const effect of tr.effects) {
+      if (effect.is(setSelectionsEffect)) return effect.value;
+    }
+    return value;
+  },
+});
+
+function buildSelectionDecorations(view: EditorView): DecorationSet {
+  const selections = view.state.field(selectionsField);
+  const ranges: Range<Decoration>[] = [];
+  const docLength = view.state.doc.length;
+
+  for (const s of selections) {
+    try {
+      const from = Math.max(0, Math.min(s.from, docLength));
+      const to = Math.max(0, Math.min(s.to, docLength));
+      if (from >= to) continue;
+      ranges.push(
+        Decoration.mark({
+          attributes: {
+            style: `background-color:${hexToRgba(s.userColor, 0.3)};border-radius:2px;`,
+          },
+        }).range(from, to)
+      );
+    } catch {
+      // Skip invalid ranges
+    }
+  }
+
+  return Decoration.set(ranges, true);
+}
+
+const selectionPlugin = ViewPlugin.fromClass(
+  class {
+    decorations: DecorationSet;
+    constructor(view: EditorView) {
+      this.decorations = buildSelectionDecorations(view);
+    }
+    update(update: ViewUpdate) {
+      const selectionChanged = update.transactions.some((tr) =>
+        tr.effects.some((e) => e.is(setSelectionsEffect))
+      );
+      if (selectionChanged || update.docChanged) {
+        this.decorations = buildSelectionDecorations(update.view);
+      }
+    }
+  },
+  { decorations: (v) => v.decorations }
+);
+
 // ─── Component ──────────────────────────────────────────────────────────────
 
 type MemberInfo = { user_email: string; user_color: string };
@@ -206,11 +278,13 @@ export function CollabEditorClient({
   const [chatMessages, setChatMessages] = useState<RoomChatMessage[]>([]);
   const [chatInput, setChatInput] = useState("");
   const [otherCursors, setOtherCursors] = useState<RemoteCursor[]>([]);
+  const [otherSelections, setOtherSelections] = useState<RemoteSelection[]>([]);
 
   const userColor = colorFromEmail(userEmail);
   const isRemoteRef = useRef(false);
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cursorDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const selectionDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const channelActionsRef = useRef<ReturnType<typeof setupCollabChannel> | null>(null);
   const lastCursorRef = useRef<CursorPosition>(null);
   const editorViewRef = useRef<EditorView | null>(null);
@@ -222,6 +296,13 @@ export function CollabEditorClient({
     if (!view) return;
     view.dispatch({ effects: setCursorsEffect.of(otherCursors) });
   }, [otherCursors]);
+
+  // ── Dispatch selection decorations into CodeMirror whenever state changes ──
+  useEffect(() => {
+    const view = editorViewRef.current;
+    if (!view) return;
+    view.dispatch({ effects: setSelectionsEffect.of(otherSelections) });
+  }, [otherSelections]);
 
   useEffect(() => {
     const actions = setupCollabChannel(roomId, {
@@ -240,6 +321,25 @@ export function CollabEditorClient({
               userColor: payload.userColor,
               position: payload.cursorPosition,
             });
+          return next;
+        });
+      },
+      onSelection: (payload: SelectionPayload) => {
+        if (payload.userEmail === userEmail) return;
+        setOtherSelections((prev) => {
+          const next = prev.filter((s) => s.userEmail !== payload.userEmail);
+          if (
+            payload.selectionFrom !== null &&
+            payload.selectionTo !== null &&
+            payload.selectionFrom < payload.selectionTo
+          ) {
+            next.push({
+              userEmail: payload.userEmail,
+              userColor: payload.userColor,
+              from: payload.selectionFrom,
+              to: payload.selectionTo,
+            });
+          }
           return next;
         });
       },
@@ -301,6 +401,18 @@ export function CollabEditorClient({
     [userEmail, userColor]
   );
 
+  // Debounced selection broadcast — 50ms; null/null clears the remote highlight
+  const handleSelectionChange = useCallback(
+    (from: number | null, to: number | null) => {
+      if (selectionDebounceRef.current) clearTimeout(selectionDebounceRef.current);
+      selectionDebounceRef.current = setTimeout(() => {
+        selectionDebounceRef.current = null;
+        channelActionsRef.current?.sendSelection(userEmail, userColor, from, to);
+      }, DEBOUNCE_MS);
+    },
+    [userEmail, userColor]
+  );
+
   const handleSaveSnapshot = useCallback(async () => {
     const token = (await supabase.auth.getSession()).data.session?.access_token;
     if (!token) return;
@@ -327,6 +439,8 @@ export function CollabEditorClient({
     EditorView.lineWrapping,
     cursorsField,
     cursorPlugin,
+    selectionsField,
+    selectionPlugin,
     (langMap[language] || javascript)(),
     EditorView.updateListener.of((vu) => {
       if (vu.selectionSet) {
@@ -336,6 +450,11 @@ export function CollabEditorClient({
           ch: main.head - vu.state.doc.lineAt(main.head).from,
         };
         handleCursorChange(pos);
+        // Broadcast selection range; null/null when cursor is collapsed
+        handleSelectionChange(
+          main.empty ? null : main.from,
+          main.empty ? null : main.to
+        );
       }
     }),
   ];
