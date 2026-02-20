@@ -58,7 +58,7 @@ def create_organisation(
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to create")
         org = row.data[0]
         supabase_admin.table("organisation_members").insert(
-            {"organisation_id": org["id"], "user_id": user.sub, "role": "owner"}
+            {"organisation_id": org["id"], "user_id": user.sub, "role": "admin"}
         ).execute()
         return org
     except HTTPException:
