@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.auth import get_current_user, JWTPayload
+from app.routers import collab as collab_router
 from app.schemas import (
     RoomCreate,
     RoomResponse,
@@ -38,6 +39,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(collab_router.router)
 
 
 @app.get("/health")

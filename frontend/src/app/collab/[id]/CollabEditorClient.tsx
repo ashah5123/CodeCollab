@@ -1,0 +1,350 @@
+"use client";
+
+import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
+import CodeMirror from "@uiw/react-codemirror";
+import { basicDark } from "@uiw/codemirror-theme-basic";
+import { javascript } from "@codemirror/lang-javascript";
+import { python } from "@codemirror/lang-python";
+import { json } from "@codemirror/lang-json";
+import { EditorView } from "@codemirror/view";
+import { createClient } from "@/lib/supabase";
+import {
+  setupCollabChannel,
+  type CursorPosition,
+  type RoomPresenceState,
+  type RoomChatMessage,
+} from "@/lib/realtime";
+import { saveCollabRoomCode } from "@/lib/api";
+
+const DEBOUNCE_MS = 50;
+const LANGUAGES = [
+  { value: "python", label: "Python" },
+  { value: "javascript", label: "JavaScript" },
+  { value: "typescript", label: "TypeScript" },
+  { value: "json", label: "JSON" },
+];
+
+const langMap: Record<string, () => ReturnType<typeof javascript>> = {
+  javascript: javascript,
+  typescript: () => javascript({ typescript: true }),
+  python,
+  json,
+};
+
+const USER_COLORS = [
+  "#3b82f6", // blue
+  "#a855f7", // purple
+  "#22c55e", // green
+  "#f97316", // orange
+  "#ec4899", // pink
+  "#06b6d4", // cyan
+];
+
+function colorFromEmail(email: string): string {
+  let h = 0;
+  for (let i = 0; i < email.length; i++) h = (h << 5) - h + email.charCodeAt(i);
+  const idx = Math.abs(h) % USER_COLORS.length;
+  return USER_COLORS[idx];
+}
+
+type MemberInfo = { user_email: string; user_color: string };
+
+type CollabEditorClientProps = {
+  roomId: string;
+  roomName: string;
+  roomLanguage: string;
+  initialCode: string;
+  userEmail: string;
+  userId: string;
+};
+
+export function CollabEditorClient({
+  roomId,
+  roomName,
+  roomLanguage,
+  initialCode,
+  userEmail,
+  userId,
+}: CollabEditorClientProps) {
+  const [code, setCode] = useState(initialCode);
+  const [language] = useState(roomLanguage);
+  const [savedToast, setSavedToast] = useState(false);
+  const [members, setMembers] = useState<MemberInfo[]>([]);
+  const [chatMessages, setChatMessages] = useState<RoomChatMessage[]>([]);
+  const [chatInput, setChatInput] = useState("");
+  const [otherCursors, setOtherCursors] = useState<
+    Array<{ userEmail: string; userColor: string; position: CursorPosition }>
+  >([]);
+
+  const userColor = colorFromEmail(userEmail);
+  const isRemoteRef = useRef(false);
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const channelActionsRef = useRef<ReturnType<typeof setupCollabChannel> | null>(
+    null
+  );
+  const lastCursorRef = useRef<CursorPosition>(null);
+  const supabase = createClient();
+
+  useEffect(() => {
+    const actions = setupCollabChannel(roomId, {
+      onCode: (payload) => {
+        if (payload.userEmail === userEmail) return;
+        isRemoteRef.current = true;
+        setCode(payload.code);
+      },
+      onCursor: (payload) => {
+        if (payload.userEmail === userEmail) return;
+        setOtherCursors((prev) => {
+          const next = prev.filter((c) => c.userEmail !== payload.userEmail);
+          if (payload.cursorPosition)
+            next.push({
+              userEmail: payload.userEmail,
+              userColor: payload.userColor,
+              position: payload.cursorPosition,
+            });
+          return next;
+        });
+      },
+      onPresenceSync: (state) => {
+        const list: MemberInfo[] = [];
+        for (const presences of Object.values(state)) {
+          for (const p of presences) {
+            if (p.user_email) list.push({ user_email: p.user_email, user_color: p.user_color });
+          }
+        }
+        setMembers(list);
+      },
+      onChat: (msg) => {
+        setChatMessages((prev) => [...prev, msg]);
+      },
+    });
+    channelActionsRef.current = actions;
+    actions.trackPresence(userEmail, userColor);
+    return () => {
+      actions.unsubscribe();
+      channelActionsRef.current = null;
+    };
+  }, [roomId, userEmail, userColor]);
+
+  const sendCodeUpdate = useCallback(
+    (newCode: string, cursorPosition: CursorPosition) => {
+      if (isRemoteRef.current) {
+        isRemoteRef.current = false;
+        return;
+      }
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = setTimeout(() => {
+        debounceTimerRef.current = null;
+        channelActionsRef.current?.sendCode(
+          newCode,
+          userEmail,
+          userColor,
+          cursorPosition
+        );
+      }, DEBOUNCE_MS);
+    },
+    [userEmail, userColor]
+  );
+
+  const handleEditorChange = useCallback(
+    (value: string) => {
+      setCode(value);
+      sendCodeUpdate(value, lastCursorRef.current);
+    },
+    [sendCodeUpdate]
+  );
+
+  const handleCursorChange = useCallback(
+    (pos: CursorPosition) => {
+      lastCursorRef.current = pos;
+      channelActionsRef.current?.sendCursor(userEmail, userColor, pos);
+    },
+    [userEmail, userColor]
+  );
+
+  const handleSaveSnapshot = useCallback(async () => {
+    const token = (await supabase.auth.getSession()).data.session?.access_token;
+    if (!token) return;
+    await saveCollabRoomCode(token, roomId, code);
+    setSavedToast(true);
+    setTimeout(() => setSavedToast(false), 2000);
+  }, [roomId, code, supabase.auth]);
+
+  const handleSubmitToReview = useCallback(async () => {
+    const token = (await supabase.auth.getSession()).data.session?.access_token;
+    if (token) await saveCollabRoomCode(token, roomId, code);
+    window.location.href = "/dashboard";
+  }, [roomId, code, supabase.auth]);
+
+  const sendChat = (e: React.FormEvent) => {
+    e.preventDefault();
+    const msg = chatInput.trim();
+    if (!msg) return;
+    channelActionsRef.current?.sendChat(userEmail, msg);
+    setChatInput("");
+  };
+
+  const extensions = [
+    EditorView.lineWrapping,
+    (langMap[language] || javascript)(),
+    EditorView.updateListener.of((vu) => {
+      if (vu.selectionSet) {
+        const main = vu.state.selection.main;
+        const pos: CursorPosition = {
+          line: vu.state.doc.lineAt(main.head).number,
+          ch: main.head - vu.state.doc.lineAt(main.head).from,
+        };
+        handleCursorChange(pos);
+      }
+    }),
+  ];
+
+  const uniqueMembers = Array.from(
+    new Map(members.map((m) => [m.user_email, m])).values()
+  );
+
+  return (
+    <div className="h-screen flex flex-col bg-surface">
+      <header className="flex items-center justify-between border-b border-border bg-surface-muted/30 px-4 py-2 shrink-0">
+        <div className="flex items-center gap-4">
+          <Link
+            href="/collab"
+            className="text-zinc-400 hover:text-white text-sm"
+          >
+            ← Collab
+          </Link>
+          <h1 className="font-semibold text-white truncate max-w-[200px]">
+            {roomName}
+          </h1>
+          <span className="rounded-full bg-surface-muted px-2 py-0.5 text-xs text-zinc-300">
+            {LANGUAGES.find((l) => l.value === language)?.label ?? language}
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          {savedToast && (
+            <span className="text-sm text-green-400">Saved!</span>
+          )}
+          <button
+            type="button"
+            onClick={handleSaveSnapshot}
+            className="rounded-lg border border-border bg-surface-muted/50 px-3 py-1.5 text-xs font-medium text-zinc-300 hover:bg-surface-muted"
+          >
+            Save Snapshot
+          </button>
+          <button
+            type="button"
+            onClick={handleSubmitToReview}
+            className="rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-white hover:opacity-90"
+          >
+            Submit to Review
+          </button>
+        </div>
+      </header>
+
+      <div className="flex-1 flex min-h-0">
+        <div className="flex-[0.7] flex flex-col min-w-0 border-r border-border">
+          <div className="flex-1 min-h-0">
+            <CodeMirror
+              value={code}
+              height="100%"
+              theme={basicDark}
+              extensions={extensions}
+              onChange={handleEditorChange}
+              editable={true}
+              basicSetup={{
+                lineNumbers: true,
+                foldGutter: true,
+                highlightActiveLine: true,
+                highlightSelectionMatches: true,
+              }}
+              className="h-full text-left"
+            />
+          </div>
+        </div>
+
+        <aside className="flex-[0.3] flex flex-col bg-surface-muted/20 min-w-0 w-[30%]">
+          <div className="shrink-0 border-b border-border p-3">
+            <h3 className="text-sm font-medium text-zinc-300 mb-2">
+              Members ({uniqueMembers.length})
+            </h3>
+            <div className="flex flex-wrap gap-2">
+              {uniqueMembers.map((m) => (
+                <div
+                  key={m.user_email}
+                  className="flex items-center gap-2 text-sm"
+                >
+                  <span
+                    className="relative inline-block h-6 w-6 rounded-full flex-shrink-0"
+                    style={{ backgroundColor: m.user_color }}
+                  >
+                    <span className="absolute right-0 top-0 h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+                  </span>
+                  <span className="text-zinc-300 truncate max-w-[120px]">
+                    {m.user_email === userEmail ? "You" : m.user_email}
+                  </span>
+                </div>
+              ))}
+            </div>
+            <p className="text-xs text-zinc-500 mt-1">
+              {uniqueMembers.length} member{uniqueMembers.length !== 1 ? "s" : ""} coding
+            </p>
+          </div>
+
+          {otherCursors.length > 0 && (
+            <div className="shrink-0 border-b border-border p-3">
+              <h3 className="text-xs font-medium text-zinc-500 mb-1">
+                Cursors
+              </h3>
+              {otherCursors.map((c) => (
+                <div key={c.userEmail} className="text-xs text-zinc-400">
+                  <span
+                    className="inline-block w-2 h-2 rounded-full mr-1 align-middle"
+                    style={{ backgroundColor: c.userColor }}
+                  />
+                  {c.userEmail} at L{c.position?.line ?? "?"}:C{c.position?.ch ?? "?"}
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="flex-1 flex flex-col min-h-0 border-t border-border">
+            <div className="px-3 py-2 border-b border-border">
+              <h3 className="text-sm font-medium text-zinc-300">
+                Room Chat
+              </h3>
+            </div>
+            <div className="flex-1 overflow-y-auto p-2 space-y-2">
+              {chatMessages.map((msg, i) => (
+                <div key={i} className="text-sm">
+                  <span className="text-zinc-500 text-xs">
+                    {msg.userEmail === userEmail ? "You" : msg.userEmail}
+                  </span>
+                  <p className="text-zinc-300 break-words mt-0.5">{msg.message}</p>
+                </div>
+              ))}
+            </div>
+            <form onSubmit={sendChat} className="p-2 border-t border-border">
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="Type a message..."
+                  value={chatInput}
+                  onChange={(e) => setChatInput(e.target.value)}
+                  className="flex-1 rounded border border-border bg-surface-muted/50 px-3 py-2 text-sm text-white placeholder:text-zinc-500 focus:border-accent focus:outline-none"
+                />
+                <button
+                  type="submit"
+                  disabled={!chatInput.trim()}
+                  className="rounded bg-accent px-3 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+                >
+                  Send
+                </button>
+              </div>
+            </form>
+          </div>
+        </aside>
+      </div>
+    </div>
+  );
+}

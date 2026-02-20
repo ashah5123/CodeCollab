@@ -71,3 +71,97 @@ export async function joinRoom(
     body: JSON.stringify({ invite_slug: inviteSlug }),
   });
 }
+
+// Collab rooms (real-time collaborative coding)
+export type CollabRoomCreatePayload = {
+  name: string;
+  description?: string;
+  language?: string;
+};
+
+export type CollabRoomResponse = {
+  id: string;
+  name: string;
+  description: string;
+  language: string;
+  code: string;
+  created_by: string;
+  creator_email: string | null;
+  is_active: boolean;
+  created_at: string;
+  member_count: number;
+};
+
+export type CollabRoomDetail = {
+  id: string;
+  name: string;
+  description: string;
+  language: string;
+  code: string;
+  created_by: string;
+  creator_email: string | null;
+  is_active: boolean;
+  created_at: string;
+  is_member: boolean;
+};
+
+export async function listCollabRooms(
+  token: string
+): Promise<CollabRoomResponse[]> {
+  return fetchWithAuth("/collab/rooms", token);
+}
+
+export async function createCollabRoom(
+  token: string,
+  payload: CollabRoomCreatePayload
+): Promise<CollabRoomResponse> {
+  return fetchWithAuth("/collab/rooms", token, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function getCollabRoom(
+  token: string,
+  roomId: string
+): Promise<CollabRoomDetail> {
+  return fetchWithAuth(`/collab/rooms/${roomId}`, token);
+}
+
+export async function deleteCollabRoom(
+  token: string,
+  roomId: string
+): Promise<void> {
+  await fetchWithAuth(`/collab/rooms/${roomId}`, token, {
+    method: "DELETE",
+  });
+}
+
+export async function joinCollabRoom(
+  token: string,
+  roomId: string
+): Promise<CollabRoomDetail> {
+  return fetchWithAuth(`/collab/rooms/${roomId}/join`, token, {
+    method: "POST",
+  });
+}
+
+export async function leaveCollabRoom(
+  token: string,
+  roomId: string
+): Promise<void> {
+  await fetchWithAuth(`/collab/rooms/${roomId}/leave`, token, {
+    method: "POST",
+  });
+}
+
+export async function saveCollabRoomCode(
+  token: string,
+  roomId: string,
+  code: string
+): Promise<void> {
+  await fetchWithAuth(`/collab/rooms/${roomId}/code`, token, {
+    method: "PATCH",
+    body: JSON.stringify({ code }),
+  });
+}

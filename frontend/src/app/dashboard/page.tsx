@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { listRooms } from "@/lib/api";
 import { CreateRoomButton } from "./CreateRoomButton";
 import { SignOutButton } from "./SignOutButton";
+import { Sidebar } from "@/components/Sidebar";
 
 export default async function DashboardPage() {
   const supabase = await createClient();
@@ -28,20 +29,17 @@ export default async function DashboardPage() {
   }
 
   return (
-    <div className="min-h-screen">
-      <header className="border-b border-border bg-surface-muted/30">
-        <div className="mx-auto flex h-14 max-w-4xl items-center justify-between px-4">
-          <Link href="/dashboard" className="text-lg font-semibold text-white">
-            CodeCollab
-          </Link>
-          <div className="flex items-center gap-3">
+    <div className="min-h-screen flex">
+      <Sidebar />
+      <div className="flex-1 flex flex-col">
+        <header className="border-b border-border bg-surface-muted/30 shrink-0">
+          <div className="flex h-14 items-center justify-end gap-3 px-4">
             <span className="text-sm text-zinc-400">{user.email}</span>
             <CreateRoomButton />
             <SignOutButton />
           </div>
-        </div>
-      </header>
-      <main className="mx-auto max-w-4xl px-4 py-8">
+        </header>
+        <main className="flex-1 mx-auto max-w-4xl w-full px-4 py-8">
         <h2 className="text-xl font-semibold text-white mb-4">Your rooms</h2>
         {rooms.length === 0 ? (
           <div className="rounded-xl border border-border bg-surface-muted/30 p-8 text-center text-zinc-400">
@@ -74,7 +72,8 @@ export default async function DashboardPage() {
             ) to join their room.
           </p>
         </div>
-      </main>
+        </main>
+      </div>
     </div>
   );
 }

@@ -66,3 +66,44 @@ class ChatMessageResponse(BaseModel):
     created_at: str
 
     model_config = {"from_attributes": True}
+
+
+# Collab rooms (real-time collaborative coding)
+class CollabRoomCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    description: str = Field(default="", max_length=1000)
+    language: str = Field(default="python", max_length=50)
+
+
+class CollabRoomResponse(BaseModel):
+    id: UUID
+    name: str
+    description: str = ""
+    language: str
+    code: str = ""
+    created_by: UUID
+    creator_email: str | None = None
+    is_active: bool = True
+    created_at: str
+    member_count: int = 0
+
+    model_config = {"from_attributes": True}
+
+
+class CollabRoomDetail(BaseModel):
+    id: UUID
+    name: str
+    description: str = ""
+    language: str
+    code: str
+    created_by: UUID
+    creator_email: str | None = None
+    is_active: bool
+    created_at: str
+    is_member: bool = False
+
+    model_config = {"from_attributes": True}
+
+
+class CollabRoomCodeUpdate(BaseModel):
+    code: str
