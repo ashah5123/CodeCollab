@@ -245,22 +245,36 @@ export async function rejectSubmission(
 
 // ─── Leaderboard ─────────────────────────────────────────────────────────────
 
+export type LeaderboardRow = {
+  user_id: string;
+  user_email: string;
+  count: number;
+};
+
+export type LeaderboardResponse = {
+  by_submissions: LeaderboardRow[];
+  by_comments: LeaderboardRow[];
+  by_reactions_received: LeaderboardRow[];
+};
+
+export async function getLeaderboard(
+  token: string
+): Promise<LeaderboardResponse> {
+  return fetchWithAuth("/api/v1/leaderboard", token);
+}
+
+/** @deprecated Used by dashboard only; leaderboard is now per-category. */
 export type LeaderboardEntry = {
   rank: number;
   user_id: string;
   email: string;
-  display_name?: string;
   score: number;
   submissions_count: number;
   approved_count: number;
 };
 
-export async function getLeaderboard(token: string): Promise<LeaderboardEntry[]> {
-  return fetchWithAuth("/leaderboard", token);
-}
-
 export async function getMyRank(token: string): Promise<LeaderboardEntry | null> {
-  return fetchWithAuth("/leaderboard/me", token).catch(() => null);
+  return fetchWithAuth("/api/v1/leaderboard/me", token).catch(() => null);
 }
 
 // ─── User Profile ─────────────────────────────────────────────────────────────

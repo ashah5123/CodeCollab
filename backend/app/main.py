@@ -8,6 +8,7 @@ from app.config import settings
 from app.auth import get_current_user, JWTPayload
 from app.routers import collab as collab_router
 from app.routers import organisations as organisations_router
+from app.routers import leaderboard as leaderboard_router
 from app.schemas import (
     RoomCreate,
     RoomResponse,
@@ -43,6 +44,7 @@ app.add_middleware(
 
 app.include_router(collab_router.router)
 app.include_router(organisations_router.router)
+app.include_router(leaderboard_router.router)
 
 
 @app.get("/health")
