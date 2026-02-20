@@ -35,6 +35,7 @@ export default function CollabRoomsPage() {
   const [createDescription, setCreateDescription] = useState("");
   const [createLanguage, setCreateLanguage] = useState("python");
   const [createLoading, setCreateLoading] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
 
   useEffect(() => {
     const supabase = createClient();
@@ -86,12 +87,16 @@ export default function CollabRoomsPage() {
   async function handleCreateRoom(e: React.FormEvent) {
     e.preventDefault();
     if (!createName.trim()) return;
+    setCreateError(null);
     setCreateLoading(true);
     try {
       const supabase = createClient();
       const session = await supabase.auth.getSession();
       const token = session.data.session?.access_token;
-      if (!token) return;
+      if (!token) {
+        setCreateError("You must be logged in to create a room.");
+        return;
+      }
       const room = await createCollabRoom(token, {
         name: createName.trim(),
         description: createDescription.trim(),
@@ -101,9 +106,9 @@ export default function CollabRoomsPage() {
       setCreateName("");
       setCreateDescription("");
       setCreateLanguage("python");
-      window.location.href = `/collab/${room.id}`;
+      router.push(`/collab/${room.id}`);
     } catch (e) {
-      console.error(e);
+      setCreateError((e as Error).message || "Failed to create room. Please try again.");
     } finally {
       setCreateLoading(false);
     }
@@ -188,7 +193,7 @@ export default function CollabRoomsPage() {
       {modalOpen && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
-          onClick={() => !createLoading && setModalOpen(false)}
+          onClick={() => { if (!createLoading) { setModalOpen(false); setCreateError(null); } }}
         >
           <div
             className="w-full max-w-md rounded-xl border border-border bg-surface p-6 shadow-xl"
@@ -244,10 +249,15 @@ export default function CollabRoomsPage() {
                   ))}
                 </div>
               </div>
+              {createError && (
+                <p className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-400">
+                  {createError}
+                </p>
+              )}
               <div className="flex gap-2 pt-2">
                 <button
                   type="button"
-                  onClick={() => !createLoading && setModalOpen(false)}
+                  onClick={() => { if (!createLoading) { setModalOpen(false); setCreateError(null); } }}
                   className="flex-1 rounded-lg border border-border px-4 py-2 text-sm font-medium text-zinc-300 hover:bg-surface-muted"
                 >
                   Cancel
