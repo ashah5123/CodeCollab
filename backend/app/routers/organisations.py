@@ -49,10 +49,9 @@ def create_organisation(
     """Create organisation and add creator as owner."""
     try:
         name = body.get("name") or "New Organisation"
-        slug = body.get("slug") or name.lower().replace(" ", "-")[:50]
         row = (
             supabase_admin.table("organisations")
-            .insert({"name": name, "slug": slug, "created_by": user.sub})
+            .insert({"name": name, "created_by": user.sub})
             .execute()
         )
         if not row.data or len(row.data) == 0:
