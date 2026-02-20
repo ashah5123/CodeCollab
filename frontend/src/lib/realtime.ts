@@ -216,6 +216,7 @@ export type CollabChannelCallbacks = {
   onCursor: (payload: CursorPayload) => void;
   onSelection: (payload: SelectionPayload) => void;
   onPresenceSync: (state: RoomPresenceState) => void;
+  onPresenceLeave: (userEmail: string) => void;
   onChat: (msg: RoomChatMessage) => void;
 };
 
@@ -278,6 +279,11 @@ export function setupCollabChannel(
         }));
       }
       callbacks.onPresenceSync(normalized);
+    })
+    .on("presence", { event: "leave" }, ({ leftPresences }) => {
+      for (const p of leftPresences as Array<{ user_email?: string }>) {
+        if (p.user_email) callbacks.onPresenceLeave(p.user_email);
+      }
     })
     .subscribe();
 

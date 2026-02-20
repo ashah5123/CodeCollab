@@ -102,7 +102,6 @@ export function Timer({ submissionId, isOwner }: TimerProps) {
       })
       .subscribe();
 
-    // @ts-expect-error – channel type is complex; ref is typed loosely above
     channelRef.current = ch;
 
     return () => {

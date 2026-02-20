@@ -27,6 +27,7 @@ import {
 import { saveCollabRoomCode } from "@/lib/api";
 
 const DEBOUNCE_MS = 50;
+const CURSOR_STALE_MS = 10_000;
 const LANGUAGES = [
   { value: "python", label: "Python" },
   { value: "javascript", label: "JavaScript" },
@@ -288,6 +289,8 @@ export function CollabEditorClient({
   const channelActionsRef = useRef<ReturnType<typeof setupCollabChannel> | null>(null);
   const lastCursorRef = useRef<CursorPosition>(null);
   const editorViewRef = useRef<EditorView | null>(null);
+  // Per-user stale-cursor timeouts: if no broadcast received in CURSOR_STALE_MS, remove their decorations
+  const cursorTimeoutsRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const supabase = createClient();
 
   // ── Dispatch cursor decorations into CodeMirror whenever state changes ──
@@ -304,6 +307,12 @@ export function CollabEditorClient({
     view.dispatch({ effects: setSelectionsEffect.of(otherSelections) });
   }, [otherSelections]);
 
+  // ── Remove both cursor and selection decorations for a given user ─────────
+  const removeUserDecorations = useCallback((email: string) => {
+    setOtherCursors((prev) => prev.filter((c) => c.userEmail !== email));
+    setOtherSelections((prev) => prev.filter((s) => s.userEmail !== email));
+  }, []);
+
   useEffect(() => {
     const actions = setupCollabChannel(roomId, {
       onCode: (payload) => {
@@ -313,6 +322,15 @@ export function CollabEditorClient({
       },
       onCursor: (payload) => {
         if (payload.userEmail === userEmail) return;
+        // Reset the stale-cursor timeout for this user
+        const existing = cursorTimeoutsRef.current.get(payload.userEmail);
+        if (existing) clearTimeout(existing);
+        const staleTimer = setTimeout(() => {
+          cursorTimeoutsRef.current.delete(payload.userEmail);
+          removeUserDecorations(payload.userEmail);
+        }, CURSOR_STALE_MS);
+        cursorTimeoutsRef.current.set(payload.userEmail, staleTimer);
+
         setOtherCursors((prev) => {
           const next = prev.filter((c) => c.userEmail !== payload.userEmail);
           if (payload.cursorPosition)
@@ -353,6 +371,15 @@ export function CollabEditorClient({
         }
         setMembers(list);
       },
+      onPresenceLeave: (leaveEmail) => {
+        // Cancel pending stale timer — the user is definitively gone
+        const existing = cursorTimeoutsRef.current.get(leaveEmail);
+        if (existing) {
+          clearTimeout(existing);
+          cursorTimeoutsRef.current.delete(leaveEmail);
+        }
+        removeUserDecorations(leaveEmail);
+      },
       onChat: (msg) => {
         setChatMessages((prev) => [...prev, msg]);
       },
@@ -362,8 +389,11 @@ export function CollabEditorClient({
     return () => {
       actions.unsubscribe();
       channelActionsRef.current = null;
+      // Clear all per-user stale timers
+      for (const timer of cursorTimeoutsRef.current.values()) clearTimeout(timer);
+      cursorTimeoutsRef.current.clear();
     };
-  }, [roomId, userEmail, userColor]);
+  }, [roomId, userEmail, userColor, removeUserDecorations]);
 
   const sendCodeUpdate = useCallback(
     (newCode: string, cursorPosition: CursorPosition) => {
