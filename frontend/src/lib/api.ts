@@ -185,18 +185,18 @@ export type ReviewComment = {
 };
 
 export async function listSubmissions(token: string): Promise<Submission[]> {
-  return fetchWithAuth("/submissions", token);
+  return fetchWithAuth("/api/v1/submissions", token);
 }
 
 export async function getSubmission(token: string, id: string): Promise<Submission> {
-  return fetchWithAuth(`/submissions/${id}`, token);
+  return fetchWithAuth(`/api/v1/submissions/${id}`, token);
 }
 
 export async function createSubmission(
   token: string,
   payload: { title: string; language: string; code: string; room_id?: string }
 ): Promise<Submission> {
-  return fetchWithAuth("/submissions", token, {
+  return fetchWithAuth("/api/v1/submissions", token, {
     method: "POST",
     body: JSON.stringify(payload),
   });
@@ -206,7 +206,7 @@ export async function listReviewComments(
   token: string,
   submissionId: string
 ): Promise<ReviewComment[]> {
-  return fetchWithAuth(`/submissions/${submissionId}/comments`, token);
+  return fetchWithAuth(`/api/v1/submissions/${submissionId}/comments`, token);
 }
 
 export async function addReviewComment(
@@ -215,7 +215,7 @@ export async function addReviewComment(
   body: string,
   lineNumber?: number
 ): Promise<ReviewComment> {
-  return fetchWithAuth(`/submissions/${submissionId}/comments`, token, {
+  return fetchWithAuth(`/api/v1/submissions/${submissionId}/comments`, token, {
     method: "POST",
     body: JSON.stringify({ body, line_number: lineNumber }),
   });
@@ -226,7 +226,7 @@ export async function approveSubmission(
   submissionId: string,
   feedback?: string
 ): Promise<Submission> {
-  return fetchWithAuth(`/submissions/${submissionId}/approve`, token, {
+  return fetchWithAuth(`/api/v1/submissions/${submissionId}/approve`, token, {
     method: "POST",
     body: JSON.stringify({ feedback }),
   });
@@ -237,7 +237,7 @@ export async function rejectSubmission(
   submissionId: string,
   feedback?: string
 ): Promise<Submission> {
-  return fetchWithAuth(`/submissions/${submissionId}/reject`, token, {
+  return fetchWithAuth(`/api/v1/submissions/${submissionId}/reject`, token, {
     method: "POST",
     body: JSON.stringify({ feedback }),
   });
@@ -337,7 +337,10 @@ export type OrgChatMessage = {
 };
 
 export async function getMyOrg(token: string): Promise<Organisation | null> {
-  return fetchWithAuth("/organisations/me", token).catch(() => null);
+  const data = await fetchWithAuth("/organisations/me", token).catch(() => null);
+  if (!data) return null;
+  if (Array.isArray(data)) return data[0] ?? null;
+  return data;
 }
 
 export async function getOrgMembers(
