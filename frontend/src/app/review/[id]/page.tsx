@@ -20,6 +20,7 @@ import {
   type ReviewComment,
 } from "@/lib/api";
 import { Sidebar } from "@/components/Sidebar";
+import { Timer } from "@/components/Timer";
 
 const langMap: Record<string, () => ReturnType<typeof javascript>> = {
   javascript,
@@ -212,6 +213,9 @@ export default function ReviewPage() {
                 <p className="text-xs text-zinc-400">{submission.feedback}</p>
               </div>
             )}
+
+            {/* Timer */}
+            <Timer submissionId={submission.id} isOwner={isOwner} />
 
             {/* Review actions (non-owner) */}
             {!isOwner && submission.status === "pending" && (
