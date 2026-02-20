@@ -1,9 +1,8 @@
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from jose import JWTError, jwt
 from pydantic import BaseModel
 
-from app.config import settings
+from app.supabase_client import supabase_admin
 
 HTTPBearerScheme = HTTPBearer(auto_error=False)
 
@@ -14,20 +13,23 @@ class JWTPayload(BaseModel):
     role: str | None = None
 
 
-def decode_supabase_token(token: str) -> JWTPayload:
+def get_user_from_token(token: str) -> JWTPayload:
     try:
-        payload = jwt.decode(
-            token,
-            settings.supabase_jwt_secret,
-            audience="authenticated",
-            algorithms=["HS256"],
-        )
+        response = supabase_admin.auth.get_user(token)
+        if response.user is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid or expired token",
+            )
+        user = response.user
         return JWTPayload(
-            sub=payload.get("sub", ""),
-            email=payload.get("email"),
-            role=payload.get("role"),
+            sub=str(user.id),
+            email=user.email,
+            role=getattr(user, "role", None),
         )
-    except JWTError as e:
+    except HTTPException:
+        raise
+    except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token",
@@ -42,4 +44,4 @@ async def get_current_user(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Bearer token required",
         )
-    return decode_supabase_token(cred.credentials)
+    return get_user_from_token(cred.credentials)
