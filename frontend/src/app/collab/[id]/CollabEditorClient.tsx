@@ -7,7 +7,15 @@ import { basicDark } from "@uiw/codemirror-theme-basic";
 import { javascript } from "@codemirror/lang-javascript";
 import { python } from "@codemirror/lang-python";
 import { json } from "@codemirror/lang-json";
-import { EditorView } from "@codemirror/view";
+import {
+  EditorView,
+  ViewPlugin,
+  Decoration,
+  WidgetType,
+} from "@codemirror/view";
+import type { DecorationSet, ViewUpdate } from "@codemirror/view";
+import { StateField, StateEffect } from "@codemirror/state";
+import type { Range } from "@codemirror/state";
 import { createClient } from "@/lib/supabase";
 import {
   setupCollabChannel,
@@ -48,6 +56,130 @@ function colorFromEmail(email: string): string {
   return USER_COLORS[idx];
 }
 
+// ─── Remote cursor types ────────────────────────────────────────────────────
+
+type RemoteCursor = {
+  userEmail: string;
+  userColor: string;
+  position: CursorPosition;
+};
+
+// ─── CodeMirror cursor decorations (module-level so refs are stable) ────────
+
+class RemoteCursorWidget extends WidgetType {
+  constructor(private readonly color: string, private readonly label: string) {
+    super();
+  }
+
+  eq(other: RemoteCursorWidget): boolean {
+    return this.color === other.color && this.label === other.label;
+  }
+
+  toDOM(): HTMLElement {
+    const wrap = document.createElement("span");
+    wrap.setAttribute("aria-hidden", "true");
+    wrap.style.cssText =
+      "position:relative;display:inline-block;overflow:visible;";
+
+    const bar = document.createElement("span");
+    bar.style.cssText = [
+      "display:inline-block",
+      "width:2px",
+      "height:1.15em",
+      `background:${this.color}`,
+      "position:relative",
+      "vertical-align:text-bottom",
+      "margin-right:-1px",
+      "border-radius:1px",
+    ].join(";");
+
+    const tag = document.createElement("span");
+    tag.textContent = this.label;
+    tag.style.cssText = [
+      "position:absolute",
+      "bottom:100%",
+      "left:0",
+      `background:${this.color}`,
+      "color:#fff",
+      "font-size:10px",
+      "font-family:sans-serif",
+      "line-height:1.4",
+      "padding:1px 4px",
+      "border-radius:3px 3px 3px 0",
+      "white-space:nowrap",
+      "pointer-events:none",
+      "z-index:100",
+      "user-select:none",
+    ].join(";");
+
+    wrap.appendChild(bar);
+    wrap.appendChild(tag);
+    return wrap;
+  }
+
+  ignoreEvent(): boolean {
+    return true;
+  }
+}
+
+const setCursorsEffect = StateEffect.define<RemoteCursor[]>();
+
+const cursorsField = StateField.define<RemoteCursor[]>({
+  create: () => [],
+  update(value, tr) {
+    for (const effect of tr.effects) {
+      if (effect.is(setCursorsEffect)) return effect.value;
+    }
+    return value;
+  },
+});
+
+function buildCursorDecorations(view: EditorView): DecorationSet {
+  const cursors = view.state.field(cursorsField);
+  const ranges: Range<Decoration>[] = [];
+
+  for (const c of cursors) {
+    if (!c.position) continue;
+    try {
+      const lineCount = view.state.doc.lines;
+      if (c.position.line < 1 || c.position.line > lineCount) continue;
+      const line = view.state.doc.line(c.position.line);
+      const pos = Math.min(line.from + c.position.ch, line.to);
+      const label = c.userEmail.split("@")[0];
+      ranges.push(
+        Decoration.widget({
+          widget: new RemoteCursorWidget(c.userColor, label),
+          side: 1,
+        }).range(pos)
+      );
+    } catch {
+      // Skip cursors at positions outside the current document
+    }
+  }
+
+  return Decoration.set(ranges, true);
+}
+
+const cursorPlugin = ViewPlugin.fromClass(
+  class {
+    decorations: DecorationSet;
+    constructor(view: EditorView) {
+      this.decorations = buildCursorDecorations(view);
+    }
+    update(update: ViewUpdate) {
+      const cursorChanged = update.transactions.some((tr) =>
+        tr.effects.some((e) => e.is(setCursorsEffect))
+      );
+      if (cursorChanged || update.docChanged) {
+        this.decorations = buildCursorDecorations(update.view);
+      }
+    }
+  },
+  { decorations: (v) => v.decorations }
+);
+
+// ─── Component ──────────────────────────────────────────────────────────────
+
 type MemberInfo = { user_email: string; user_color: string };
 
 type CollabEditorClientProps = {
@@ -73,18 +205,23 @@ export function CollabEditorClient({
   const [members, setMembers] = useState<MemberInfo[]>([]);
   const [chatMessages, setChatMessages] = useState<RoomChatMessage[]>([]);
   const [chatInput, setChatInput] = useState("");
-  const [otherCursors, setOtherCursors] = useState<
-    Array<{ userEmail: string; userColor: string; position: CursorPosition }>
-  >([]);
+  const [otherCursors, setOtherCursors] = useState<RemoteCursor[]>([]);
 
   const userColor = colorFromEmail(userEmail);
   const isRemoteRef = useRef(false);
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const channelActionsRef = useRef<ReturnType<typeof setupCollabChannel> | null>(
-    null
-  );
+  const cursorDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const channelActionsRef = useRef<ReturnType<typeof setupCollabChannel> | null>(null);
   const lastCursorRef = useRef<CursorPosition>(null);
+  const editorViewRef = useRef<EditorView | null>(null);
   const supabase = createClient();
+
+  // ── Dispatch cursor decorations into CodeMirror whenever state changes ──
+  useEffect(() => {
+    const view = editorViewRef.current;
+    if (!view) return;
+    view.dispatch({ effects: setCursorsEffect.of(otherCursors) });
+  }, [otherCursors]);
 
   useEffect(() => {
     const actions = setupCollabChannel(roomId, {
@@ -106,11 +243,12 @@ export function CollabEditorClient({
           return next;
         });
       },
-      onPresenceSync: (state) => {
+      onPresenceSync: (state: RoomPresenceState) => {
         const list: MemberInfo[] = [];
         for (const presences of Object.values(state)) {
           for (const p of presences) {
-            if (p.user_email) list.push({ user_email: p.user_email, user_color: p.user_color });
+            if (p.user_email)
+              list.push({ user_email: p.user_email, user_color: p.user_color });
           }
         }
         setMembers(list);
@@ -136,12 +274,7 @@ export function CollabEditorClient({
       if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
       debounceTimerRef.current = setTimeout(() => {
         debounceTimerRef.current = null;
-        channelActionsRef.current?.sendCode(
-          newCode,
-          userEmail,
-          userColor,
-          cursorPosition
-        );
+        channelActionsRef.current?.sendCode(newCode, userEmail, userColor, cursorPosition);
       }, DEBOUNCE_MS);
     },
     [userEmail, userColor]
@@ -155,10 +288,15 @@ export function CollabEditorClient({
     [sendCodeUpdate]
   );
 
+  // Debounced cursor broadcast — 50ms to avoid flooding
   const handleCursorChange = useCallback(
     (pos: CursorPosition) => {
       lastCursorRef.current = pos;
-      channelActionsRef.current?.sendCursor(userEmail, userColor, pos);
+      if (cursorDebounceRef.current) clearTimeout(cursorDebounceRef.current);
+      cursorDebounceRef.current = setTimeout(() => {
+        cursorDebounceRef.current = null;
+        channelActionsRef.current?.sendCursor(userEmail, userColor, pos);
+      }, DEBOUNCE_MS);
     },
     [userEmail, userColor]
   );
@@ -187,6 +325,8 @@ export function CollabEditorClient({
 
   const extensions = [
     EditorView.lineWrapping,
+    cursorsField,
+    cursorPlugin,
     (langMap[language] || javascript)(),
     EditorView.updateListener.of((vu) => {
       if (vu.selectionSet) {
@@ -208,10 +348,7 @@ export function CollabEditorClient({
     <div className="h-screen flex flex-col bg-surface">
       <header className="flex items-center justify-between border-b border-border bg-surface-muted/30 px-4 py-2 shrink-0">
         <div className="flex items-center gap-4">
-          <Link
-            href="/collab"
-            className="text-zinc-400 hover:text-white text-sm"
-          >
+          <Link href="/collab" className="text-zinc-400 hover:text-white text-sm">
             ← Collab
           </Link>
           <h1 className="font-semibold text-white truncate max-w-[200px]">
@@ -251,6 +388,9 @@ export function CollabEditorClient({
               theme={basicDark}
               extensions={extensions}
               onChange={handleEditorChange}
+              onCreateEditor={(view) => {
+                editorViewRef.current = view;
+              }}
               editable={true}
               basicSetup={{
                 lineNumbers: true,
@@ -270,10 +410,7 @@ export function CollabEditorClient({
             </h3>
             <div className="flex flex-wrap gap-2">
               {uniqueMembers.map((m) => (
-                <div
-                  key={m.user_email}
-                  className="flex items-center gap-2 text-sm"
-                >
+                <div key={m.user_email} className="flex items-center gap-2 text-sm">
                   <span
                     className="relative inline-block h-6 w-6 rounded-full flex-shrink-0"
                     style={{ backgroundColor: m.user_color }}
@@ -297,12 +434,15 @@ export function CollabEditorClient({
                 Cursors
               </h3>
               {otherCursors.map((c) => (
-                <div key={c.userEmail} className="text-xs text-zinc-400">
+                <div key={c.userEmail} className="flex items-center gap-1.5 text-xs text-zinc-400">
                   <span
-                    className="inline-block w-2 h-2 rounded-full mr-1 align-middle"
+                    className="inline-block w-2 h-2 rounded-full shrink-0"
                     style={{ backgroundColor: c.userColor }}
                   />
-                  {c.userEmail} at L{c.position?.line ?? "?"}:C{c.position?.ch ?? "?"}
+                  <span className="truncate">{c.userEmail.split("@")[0]}</span>
+                  <span className="text-zinc-600 shrink-0">
+                    L{c.position?.line ?? "?"}:{c.position?.ch ?? "?"}
+                  </span>
                 </div>
               ))}
             </div>
@@ -310,9 +450,7 @@ export function CollabEditorClient({
 
           <div className="flex-1 flex flex-col min-h-0 border-t border-border">
             <div className="px-3 py-2 border-b border-border">
-              <h3 className="text-sm font-medium text-zinc-300">
-                Room Chat
-              </h3>
+              <h3 className="text-sm font-medium text-zinc-300">Room Chat</h3>
             </div>
             <div className="flex-1 overflow-y-auto p-2 space-y-2">
               {chatMessages.map((msg, i) => (
