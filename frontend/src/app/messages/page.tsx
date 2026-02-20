@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase";
 import { Sidebar } from "@/components/Sidebar";
+import { UserMenu } from "@/components/UserMenu";
 
 type DMMessage = {
   id: string;
@@ -185,13 +186,16 @@ export default function MessagesPage() {
       <div className="w-64 shrink-0 border-r border-border flex flex-col overflow-hidden bg-surface-muted/10">
         <div className="shrink-0 px-4 h-14 flex items-center justify-between border-b border-border">
           <h1 className="text-sm font-semibold text-white">Messages</h1>
-          <button
-            onClick={() => setShowNew(true)}
-            className="flex h-7 w-7 items-center justify-center rounded-lg bg-accent/10 text-accent hover:bg-accent/20 transition-colors"
-            title="New message"
-          >
-            <PlusIcon className="h-4 w-4" />
-          </button>
+          <div className="flex items-center gap-1">
+            <UserMenu />
+            <button
+              onClick={() => setShowNew(true)}
+              className="flex h-7 w-7 items-center justify-center rounded-lg bg-accent/10 text-accent hover:bg-accent/20 transition-colors"
+              title="New message"
+            >
+              <PlusIcon className="h-4 w-4" />
+            </button>
+          </div>
         </div>
 
         {showNew && (

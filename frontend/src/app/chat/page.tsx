@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase";
 import { Sidebar } from "@/components/Sidebar";
+import { UserMenu } from "@/components/UserMenu";
 
 type GlobalMessage = {
   id: string;
@@ -109,9 +110,7 @@ export default function ChatPage() {
             <h1 className="font-semibold text-white">Global Chat</h1>
             <p className="text-xs text-zinc-500">Chat with everyone on CodeCollab</p>
           </div>
-          {user && (
-            <span className="text-xs text-zinc-500">{user.email}</span>
-          )}
+          <UserMenu />
         </header>
 
         {/* Messages */}

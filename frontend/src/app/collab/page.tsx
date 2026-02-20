@@ -10,6 +10,7 @@ import {
   type CollabRoomResponse,
 } from "@/lib/api";
 import { Sidebar } from "@/components/Sidebar";
+import { UserMenu } from "@/components/UserMenu";
 
 const LANGUAGES = [
   { value: "python", label: "Python" },
@@ -113,8 +114,9 @@ export default function CollabRoomsPage() {
       <Sidebar />
       <div className="flex-1 flex flex-col">
         <header className="border-b border-border bg-surface-muted/30 shrink-0">
-          <div className="flex h-14 items-center justify-end px-4">
-            <span className="text-sm text-zinc-400">Collab Rooms</span>
+          <div className="flex h-14 items-center justify-between px-6">
+            <h1 className="font-semibold text-white">Collab Rooms</h1>
+            <UserMenu />
           </div>
         </header>
         <main className="flex-1 mx-auto max-w-5xl w-full px-4 py-8">

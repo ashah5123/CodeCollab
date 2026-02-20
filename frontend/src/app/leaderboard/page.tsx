@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase";
 import { getLeaderboard, getMyRank, type LeaderboardEntry } from "@/lib/api";
 import { Sidebar } from "@/components/Sidebar";
+import { UserMenu } from "@/components/UserMenu";
 
 function Medal({ rank }: { rank: number }) {
   if (rank === 1)
@@ -78,14 +79,17 @@ export default function LeaderboardPage() {
             <TrophyIcon className="h-5 w-5 text-yellow-400" />
             <h1 className="font-semibold text-white">Leaderboard</h1>
           </div>
-          {myEntry && (
-            <div className="flex items-center gap-2 rounded-lg border border-border bg-surface-muted/30 px-3 py-1.5">
-              <span className="text-xs text-zinc-400">Your rank</span>
-              <span className="text-sm font-bold text-accent">#{myEntry.rank}</span>
-              <span className="text-xs text-zinc-500">·</span>
-              <span className="text-sm font-semibold text-white">{myEntry.score} pts</span>
-            </div>
-          )}
+          <div className="flex items-center gap-3">
+            {myEntry && (
+              <div className="flex items-center gap-2 rounded-lg border border-border bg-surface-muted/30 px-3 py-1.5">
+                <span className="text-xs text-zinc-400">Your rank</span>
+                <span className="text-sm font-bold text-accent">#{myEntry.rank}</span>
+                <span className="text-xs text-zinc-500">·</span>
+                <span className="text-sm font-semibold text-white">{myEntry.score} pts</span>
+              </div>
+            )}
+            <UserMenu />
+          </div>
         </header>
 
         <main className="flex-1 overflow-y-auto px-6 py-6">

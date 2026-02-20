@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase";
 import { listSubmissions, type Submission } from "@/lib/api";
 import { Sidebar } from "@/components/Sidebar";
+import { UserMenu } from "@/components/UserMenu";
 
 const STATUS_STYLES: Record<string, string> = {
   pending: "bg-yellow-500/10 text-yellow-400 border-yellow-500/20",
@@ -72,8 +73,9 @@ export default function ReviewListPage() {
     <div className="flex h-screen overflow-hidden">
       <Sidebar />
       <div className="flex-1 flex flex-col overflow-hidden">
-        <header className="shrink-0 border-b border-border bg-surface-muted/20 px-6 h-14 flex items-center">
+        <header className="shrink-0 border-b border-border bg-surface-muted/20 px-6 h-14 flex items-center justify-between">
           <h1 className="font-semibold text-white">Code Review</h1>
+          <UserMenu />
         </header>
 
         <div className="flex-1 overflow-y-auto px-6 py-6">
