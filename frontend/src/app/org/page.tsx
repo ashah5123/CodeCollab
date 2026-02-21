@@ -10,6 +10,7 @@ import {
   sendOrgChatMessage,
   createOrg,
   joinOrg,
+  leaveOrg,
   type Organisation,
   type OrgMember,
   type OrgChatMessage,
@@ -52,7 +53,11 @@ export default function OrgPage() {
   const [tab, setTab] = useState<"members" | "chat">("members");
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [leaveConfirmOpen, setLeaveConfirmOpen] = useState(false);
+  const [leaveLoading, setLeaveLoading] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+
+  const isCreatorOrAdmin = org?.created_by === me?.id || org?.role === "owner" || org?.role === "admin";
 
   const fetchAll = useCallback(async (tok: string) => {
     const orgData = await getMyOrg(tok);
@@ -138,6 +143,23 @@ export default function OrgPage() {
     navigator.clipboard.writeText(org.invite_code);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleLeaveOrg = async () => {
+    if (!token || !org) return;
+    setLeaveLoading(true);
+    setError(null);
+    try {
+      await leaveOrg(token, org.id);
+      setLeaveConfirmOpen(false);
+      setOrg(null);
+      router.push("/org");
+      router.refresh();
+    } catch (err) {
+      setError((err as Error).message ?? "Failed to leave organisation.");
+    } finally {
+      setLeaveLoading(false);
+    }
   };
 
   if (loading) {
@@ -401,9 +423,59 @@ export default function OrgPage() {
                 </p>
               </div>
             )}
+
+            {!isCreatorOrAdmin && (
+              <div className="pt-2 border-t border-border">
+                <button
+                  type="button"
+                  onClick={() => setLeaveConfirmOpen(true)}
+                  className="w-full rounded-lg border border-red-500/30 bg-red-500/10 py-2 text-xs font-medium text-red-400 hover:bg-red-500/20 transition-colors"
+                >
+                  Leave Organisation
+                </button>
+              </div>
+            )}
           </aside>
         </div>
       </div>
+
+      {/* Leave confirmation dialog */}
+      {leaveConfirmOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+          onClick={() => !leaveLoading && setLeaveConfirmOpen(false)}
+        >
+          <div
+            className="w-full max-w-sm rounded-xl border border-border bg-surface p-6 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p className="text-sm text-zinc-300 mb-4">
+              Are you sure you want to leave this organisation? You will need a new invite code to rejoin.
+            </p>
+            {error && (
+              <p className="text-sm text-red-400 mb-3">{error}</p>
+            )}
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => !leaveLoading && setLeaveConfirmOpen(false)}
+                disabled={leaveLoading}
+                className="flex-1 rounded-lg border border-border py-2 text-sm font-medium text-zinc-300 hover:bg-surface-muted disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleLeaveOrg}
+                disabled={leaveLoading}
+                className="flex-1 rounded-lg bg-red-500/20 border border-red-500/30 py-2 text-sm font-medium text-red-400 hover:bg-red-500/30 disabled:opacity-50"
+              >
+                {leaveLoading ? "Leaving…" : "Leave"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

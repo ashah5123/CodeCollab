@@ -367,6 +367,19 @@ export async function joinOrg(
   });
 }
 
+export async function leaveOrg(token: string, orgId: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/organisations/${orgId}/leave`, {
+    method: "DELETE",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as { detail?: string }).detail || res.statusText);
+  }
+}
+
 export async function getOrgChatMessages(
   token: string,
   orgId: string

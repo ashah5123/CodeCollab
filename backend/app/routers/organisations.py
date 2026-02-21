@@ -193,7 +193,43 @@ def list_org_chat_messages(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# 7. POST /organisations/{organisation_id}/chat
+# 7. DELETE /organisations/{organisation_id}/leave
+@router.delete("/{organisation_id}/leave", status_code=status.HTTP_204_NO_CONTENT)
+def leave_organisation(
+    organisation_id: str,
+    user: JWTPayload = Depends(get_current_user),
+):
+    """Remove the current user from the organisation. Admin/creator cannot leave (403)."""
+    try:
+        org = (
+            supabase_admin.table("organisations")
+            .select("created_by")
+            .eq("id", organisation_id)
+            .single()
+            .execute()
+        )
+        if not org.data:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Organisation not found")
+        if org.data.get("created_by") == user.sub:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Admin cannot leave; delete the organisation instead",
+            )
+        result = (
+            supabase_admin.table("organisation_members")
+            .delete()
+            .eq("organisation_id", organisation_id)
+            .eq("user_id", user.sub)
+            .execute()
+        )
+        return None
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# 8. POST /organisations/{organisation_id}/chat
 @router.post("/{organisation_id}/chat")
 def post_org_chat_message(
     organisation_id: str,
