@@ -19,14 +19,15 @@ function formatTime(iso: string) {
 }
 
 function Avatar({ email }: { email: string }) {
-  const letter = email[0]?.toUpperCase() ?? "?";
+  const part = email.split("@")[0] ?? "?";
+  const initials = part.slice(0, 2).toUpperCase();
   const hue = [...email].reduce((h, c) => h + c.charCodeAt(0), 0) % 360;
   return (
     <span
-      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white"
+      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white"
       style={{ background: `hsl(${hue},55%,45%)` }}
     >
-      {letter}
+      {initials}
     </span>
   );
 }
@@ -92,14 +93,6 @@ export default function ChatPage() {
     setSending(false);
   };
 
-  // Group messages by sender for a cleaner look
-  const grouped: Array<{ msg: GlobalMessage; showHeader: boolean }> = messages.map(
-    (msg, i) => ({
-      msg,
-      showHeader: i === 0 || messages[i - 1].user_id !== msg.user_id,
-    })
-  );
-
   return (
     <div className="flex h-screen overflow-hidden">
       <Sidebar />
@@ -114,36 +107,51 @@ export default function ChatPage() {
         </header>
 
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-0.5">
+        <div className="flex-1 overflow-y-auto px-6 py-4">
           {messages.length === 0 && (
             <div className="flex items-center justify-center h-full">
               <p className="text-sm text-zinc-600">No messages yet. Say hello!</p>
             </div>
           )}
-          {grouped.map(({ msg, showHeader }) => (
-            <div key={msg.id} className={showHeader ? "mt-4 first:mt-0" : ""}>
-              {showHeader && (
-                <div className="flex items-center gap-2 mb-1">
-                  <Avatar email={msg.user_email} />
-                  <span className="text-xs font-medium text-zinc-300">
-                    {msg.user_id === user?.id ? "You" : msg.user_email}
-                  </span>
-                  <span className="text-[10px] text-zinc-600">
-                    {formatTime(msg.created_at)}
-                  </span>
-                </div>
-              )}
-              <div className="pl-9">
-                <p
-                  className={`text-sm break-words ${
-                    msg.user_id === user?.id ? "text-white" : "text-zinc-300"
-                  }`}
+          <div className="space-y-4 max-w-2xl mx-auto">
+            {messages.map((msg) => {
+              const isOwn = msg.user_id === user?.id;
+              const displayName = msg.user_email
+                ? msg.user_email.split("@")[0]
+                : "Unknown";
+              return (
+                <div
+                  key={msg.id}
+                  className={`flex gap-3 ${isOwn ? "flex-row-reverse" : ""}`}
                 >
-                  {msg.content}
-                </p>
-              </div>
-            </div>
-          ))}
+                  <Avatar email={msg.user_email} />
+                  <div
+                    className={`flex flex-col min-w-0 max-w-[85%] ${
+                      isOwn ? "items-end" : "items-start"
+                    }`}
+                  >
+                    <span className="text-xs font-medium text-zinc-400 mb-1 px-1">
+                      {isOwn ? "You" : displayName}
+                    </span>
+                    <div
+                      className={`rounded-2xl px-4 py-2.5 ${
+                        isOwn
+                          ? "bg-accent text-white rounded-br-sm"
+                          : "bg-surface-muted/80 text-zinc-200 rounded-bl-sm"
+                      }`}
+                    >
+                      <p className="text-sm break-words whitespace-pre-wrap">
+                        {msg.content}
+                      </p>
+                    </div>
+                    <span className="text-[10px] text-zinc-500 mt-1 px-1">
+                      {formatTime(msg.created_at)}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
           <div ref={bottomRef} />
         </div>
 
