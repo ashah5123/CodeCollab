@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+import os
 import secrets
 
 from fastapi import FastAPI, Depends, HTTPException, status
@@ -42,7 +43,11 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origin_list,
+    allow_origins=[
+        "http://localhost:3000",
+        "https://*.vercel.app",
+        os.getenv("FRONTEND_URL", ""),
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
