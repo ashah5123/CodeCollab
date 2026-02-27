@@ -242,12 +242,17 @@ def post_org_chat_message(
         )
         if not member.data:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not a member")
-        content = (body.get("content") or "").strip()
-        if not content:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="content required")
+        message = (body.get("body") or body.get("content") or "").strip()
+        if not message:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Message is required")
         row = (
             supabase_admin.table("org_chat_messages")
-            .insert({"organisation_id": organisation_id, "user_id": user.sub, "content": content})
+            .insert({
+                "organisation_id": organisation_id,
+                "user_id": user.sub,
+                "user_email": user.email or "",
+                "body": message,
+            })
             .execute()
         )
         if not row.data or len(row.data) == 0:
