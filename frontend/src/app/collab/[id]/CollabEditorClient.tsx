@@ -539,6 +539,7 @@ export function CollabEditorClient({
   const activeTypers = new Set(otherCursors.map((c) => c.userEmail));
 
   return (
+    <>
     <div className="h-screen flex flex-col bg-surface">
       <header className="flex items-center justify-between border-b border-border bg-surface-muted/30 px-4 py-2 shrink-0">
         <div className="flex items-center gap-4">
@@ -728,5 +729,6 @@ export function CollabEditorClient({
         </div>
       </div>
     )}
+    </>
   );
 }
