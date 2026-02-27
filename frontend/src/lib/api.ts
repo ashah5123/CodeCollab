@@ -1,4 +1,13 @@
+import { supabase } from "@/lib/supabase";
+
 const API_BASE = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
+
+// ─── Auth helper ──────────────────────────────────────────────────────────────
+
+async function getToken(): Promise<string | null> {
+  const { data } = await supabase.auth.getSession();
+  return data.session?.access_token ?? null;
+}
 
 // ─── Core helper ──────────────────────────────────────────────────────────────
 
@@ -7,10 +16,12 @@ async function fetchWithAuth(
   token: string,
   options: RequestInit = {}
 ) {
+  // Always fetch a fresh token so stale state tokens never cause 401s
+  const freshToken = (await getToken()) ?? token;
   const res = await fetch(`${API_BASE}${path}`, {
     ...options,
     headers: {
-      Authorization: `Bearer ${token}`,
+      Authorization: `Bearer ${freshToken}`,
       "Content-Type": "application/json",
       ...options.headers,
     },

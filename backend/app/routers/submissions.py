@@ -1,8 +1,12 @@
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
 from app.auth import get_current_user, JWTPayload
 from app.supabase_client import supabase_admin
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/submissions", tags=["submissions"])
 
@@ -61,26 +65,36 @@ def create_submission(
     body: SubmissionCreate,
     user: JWTPayload = Depends(get_current_user),
 ):
-    row = (
-        supabase_admin.table("submissions")
-        .insert(
-            {
-                "user_id": user.sub,
-                "user_email": user.email or "",
-                "title": body.title,
-                "code": body.code,
-                "language": body.language,
-                "problem_description": body.description,
-                "status": "pending",
-            }
+    logger.info("create_submission: user=%s email=%s title=%r", user.sub, user.email, body.title)
+    try:
+        row = (
+            supabase_admin.table("submissions")
+            .insert(
+                {
+                    "user_id": user.sub,
+                    "user_email": user.email or "",
+                    "title": body.title,
+                    "code": body.code,
+                    "language": body.language,
+                    "problem_description": body.description,
+                    "status": "pending",
+                }
+            )
+            .execute()
         )
-        .execute()
-    )
+    except Exception as exc:
+        logger.error("create_submission: DB insert failed for user=%s: %s", user.sub, exc, exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to create submission",
+        ) from exc
     if not row.data:
+        logger.error("create_submission: insert returned no data for user=%s", user.sub)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to create submission",
         )
+    logger.info("create_submission: created submission id=%s for user=%s", row.data[0].get("id"), user.sub)
     return row.data[0]
 
 
