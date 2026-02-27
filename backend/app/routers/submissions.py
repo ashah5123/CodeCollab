@@ -279,6 +279,45 @@ def delete_submission_comment(
     return {"message": "Comment deleted successfully"}
 
 
+@router.get("/{submission_id}/comment_votes")
+def get_submission_comment_votes(
+    submission_id: str,
+    user: JWTPayload = Depends(get_current_user),
+):
+    """Return upvote/downvote tallies for every comment in a submission, keyed by comment_id."""
+    comments = (
+        supabase_admin.table("comments")
+        .select("id")
+        .eq("submission_id", submission_id)
+        .execute()
+    )
+    if not comments.data:
+        return {}
+
+    comment_ids = [c["id"] for c in comments.data]
+    votes_rows = (
+        supabase_admin.table("comment_votes")
+        .select("*")
+        .in_("comment_id", comment_ids)
+        .execute()
+    )
+    all_votes = votes_rows.data or []
+
+    result: dict = {}
+    for cid in comment_ids:
+        cv = [v for v in all_votes if v["comment_id"] == cid]
+        upvotes   = sum(1 for v in cv if v["vote"] == 1)
+        downvotes = sum(1 for v in cv if v["vote"] == -1)
+        user_vote = next((v["vote"] for v in cv if v["user_id"] == user.sub), 0)
+        result[cid] = {
+            "upvotes": upvotes,
+            "downvotes": downvotes,
+            "net": upvotes - downvotes,
+            "user_vote": user_vote,
+        }
+    return result
+
+
 @router.patch("/{submission_id}/status")
 def update_submission_status(
     submission_id: str,

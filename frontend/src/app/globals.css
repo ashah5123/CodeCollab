@@ -2,6 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ─── Dark theme (default) ─────────────────────────────────────────────────── */
 :root {
   --surface: 220 18% 10%;
   --surface-muted: 220 14% 14%;
@@ -11,32 +12,105 @@
   --muted: 215 16% 65%;
 }
 
+/* ─── Light theme ────────────────────────────────────────────────────────────
+   Applied by toggling the `light` class on <html>.                           */
+.light {
+  --surface: 210 30% 97%;
+  --surface-muted: 210 20% 91%;
+  --accent: 199 89% 38%;
+  --border: 210 18% 78%;
+  --foreground: 220 20% 12%;
+  --muted: 215 14% 40%;
+}
+
+/* Zinc overrides for light mode — fixes hardcoded Tailwind grey classes */
+.light .text-white          { color: hsl(220 18% 10%) !important; }
+.light .text-zinc-300       { color: hsl(220 14% 22%) !important; }
+.light .text-zinc-400       { color: hsl(220 12% 35%) !important; }
+.light .text-zinc-500       { color: hsl(220 10% 45%) !important; }
+.light .text-zinc-600       { color: hsl(220 8% 55%) !important; }
+.light .bg-zinc-900         { background-color: hsl(210 16% 88%) !important; }
+.light .border-zinc-700     { border-color: hsl(210 14% 72%) !important; }
+.light .bg-black\/60        { background-color: rgba(255,255,255,0.75) !important; }
+.light .bg-black\/70        { background-color: rgba(255,255,255,0.80) !important; }
+
 body {
   background: hsl(var(--surface));
   color: hsl(var(--foreground));
+  transition: background-color 0.25s ease, color 0.25s ease;
 }
 
-/* CodeMirror overrides for dark theme */
-.cm-editor {
-  height: 100%;
-  font-size: 14px;
-}
-.cm-scroller {
-  font-family: var(--font-mono), ui-monospace, monospace;
-}
-.cm-gutters {
+/* ─── CodeMirror overrides ───────────────────────────────────────────────── */
+.cm-editor  { height: 100%; font-size: 14px; }
+.cm-scroller { font-family: var(--font-mono), ui-monospace, monospace; }
+.cm-gutters  {
   background: hsl(var(--surface-muted));
   border-right: 1px solid hsl(var(--border));
 }
 
-@keyframes cursorPillFadeIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
+/* ─── Page-entry animations ─────────────────────────────────────────────── */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: none; }
 }
-.cursor-pill-fade-in {
-  animation: cursorPillFadeIn 0.2s ease-out;
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes slideInLeft {
+  from { opacity: 0; transform: translateX(-12px); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes cursorPillFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.animate-fade-up   { animation: fadeUp 0.35s ease-out both; }
+.animate-fade-in   { animation: fadeIn 0.25s ease-out both; }
+.animate-slide-left { animation: slideInLeft 0.25s ease-out both; }
+.cursor-pill-fade-in { animation: cursorPillFadeIn 0.2s ease-out; }
+
+/* Staggered children: add delay via nth-child */
+.stagger-children > *:nth-child(1) { animation-delay: 0ms; }
+.stagger-children > *:nth-child(2) { animation-delay: 50ms; }
+.stagger-children > *:nth-child(3) { animation-delay: 100ms; }
+.stagger-children > *:nth-child(4) { animation-delay: 150ms; }
+.stagger-children > *:nth-child(5) { animation-delay: 200ms; }
+.stagger-children > *:nth-child(6) { animation-delay: 250ms; }
+
+/* ─── Skeleton shimmer ───────────────────────────────────────────────────── */
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position:  200% 0; }
+}
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    hsl(var(--surface-muted) / 0.8) 25%,
+    hsl(var(--surface-muted) / 0.4) 50%,
+    hsl(var(--surface-muted) / 0.8) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.6s ease-in-out infinite;
+}
+
+/* ─── Micro-interactions ─────────────────────────────────────────────────── */
+.btn-press { transition: transform 0.1s ease, opacity 0.15s ease; }
+.btn-press:active { transform: scale(0.96); }
+
+/* Card hover lift */
+.card-hover {
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+.card-hover:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 24px rgba(0,0,0,0.25);
+  border-color: hsl(var(--accent) / 0.4);
+}
+
+/* Focus ring */
+.focus-ring:focus-visible {
+  outline: 2px solid hsl(var(--accent));
+  outline-offset: 2px;
 }

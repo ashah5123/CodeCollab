@@ -232,7 +232,7 @@ export default function DashboardPage() {
               {loading ? (
                 <div className="space-y-2">
                   {[1, 2, 3].map((i) => (
-                    <div key={i} className="h-16 rounded-xl border border-border bg-surface-muted/20 animate-pulse" />
+                    <div key={i} className="h-16 rounded-xl border border-border skeleton" />
                   ))}
                 </div>
               ) : recentSubs.length === 0 ? (
@@ -256,7 +256,7 @@ export default function DashboardPage() {
                     <Link
                       key={sub.id}
                       href={`/review/${sub.id}`}
-                      className="flex items-start gap-3 rounded-xl border border-border bg-surface-muted/20 px-4 py-3 hover:bg-surface-muted/40 transition-colors"
+                      className="flex items-start gap-3 rounded-xl border border-border bg-surface-muted/20 px-4 py-3 card-hover"
                     >
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
@@ -318,7 +318,7 @@ export default function DashboardPage() {
                 {loading ? (
                   <div className="space-y-2">
                     {[1, 2].map((i) => (
-                      <div key={i} className="h-8 rounded-lg bg-surface-muted/30 animate-pulse" />
+                      <div key={i} className="h-8 rounded-lg skeleton" />
                     ))}
                   </div>
                 ) : rooms.length === 0 ? (

@@ -9,10 +9,13 @@ import { Sidebar } from "@/components/Sidebar";
 import { UserMenu } from "@/components/UserMenu";
 
 const STATUS_STYLES: Record<string, string> = {
-  pending: "bg-yellow-500/10 text-yellow-400 border-yellow-500/20",
-  reviewed: "bg-blue-500/10 text-blue-400 border-blue-500/20",
-  approved: "bg-green-500/10 text-green-400 border-green-500/20",
-  rejected: "bg-red-500/10 text-red-400 border-red-500/20",
+  open:      "bg-sky-500/10 text-sky-400 border-sky-500/20",
+  in_review: "bg-purple-500/10 text-purple-400 border-purple-500/20",
+  resolved:  "bg-teal-500/10 text-teal-400 border-teal-500/20",
+  pending:   "bg-yellow-500/10 text-yellow-400 border-yellow-500/20",
+  reviewed:  "bg-blue-500/10 text-blue-400 border-blue-500/20",
+  approved:  "bg-green-500/10 text-green-400 border-green-500/20",
+  rejected:  "bg-red-500/10 text-red-400 border-red-500/20",
 };
 
 const LANG_COLORS: Record<string, string> = {
@@ -22,7 +25,7 @@ const LANG_COLORS: Record<string, string> = {
   json: "text-amber-400",
 };
 
-type Filter = "all" | "pending" | "approved" | "rejected" | "reviewed";
+type Filter = "all" | "open" | "in_review" | "resolved" | "pending" | "approved" | "rejected" | "reviewed";
 
 export default function ReviewListPage() {
   const router = useRouter();
@@ -57,11 +60,14 @@ export default function ReviewListPage() {
   }
 
   const FILTERS: { id: Filter; label: string }[] = [
-    { id: "all", label: "All" },
-    { id: "pending", label: "Pending" },
-    { id: "reviewed", label: "Reviewed" },
-    { id: "approved", label: "Approved" },
-    { id: "rejected", label: "Rejected" },
+    { id: "all",       label: "All" },
+    { id: "open",      label: "Open" },
+    { id: "in_review", label: "In Review" },
+    { id: "resolved",  label: "Resolved" },
+    { id: "pending",   label: "Pending" },
+    { id: "reviewed",  label: "Reviewed" },
+    { id: "approved",  label: "Approved" },
+    { id: "rejected",  label: "Rejected" },
   ];
 
   return (
@@ -99,7 +105,7 @@ export default function ReviewListPage() {
           {loading ? (
             <div className="space-y-2">
               {[1, 2, 3].map((i) => (
-                <div key={i} className="h-16 rounded-xl border border-border bg-surface-muted/20 animate-pulse" />
+                <div key={i} className="h-16 rounded-xl border border-border skeleton" />
               ))}
             </div>
           ) : error ? (
@@ -132,7 +138,7 @@ export default function ReviewListPage() {
                 <Link
                   key={sub.id}
                   href={`/review/${sub.id}`}
-                  className="flex items-start gap-4 rounded-xl border border-border bg-surface-muted/20 px-4 py-3.5 hover:bg-surface-muted/40 transition-colors"
+                  className="flex items-start gap-4 rounded-xl border border-border bg-surface-muted/20 px-4 py-3.5 card-hover"
                 >
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">

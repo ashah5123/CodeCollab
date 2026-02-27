@@ -21,9 +21,17 @@ import {
   rejectSubmission,
   getMyOrg,
   getOrgMembers,
+  getSubmissionCommentVotes,
+  voteComment,
+  listAttachments,
+  uploadAttachment,
+  deleteAttachment,
+  changeSubmissionStatus,
   type Submission,
   type ReviewComment,
   type OrgMember,
+  type VoteTally,
+  type Attachment,
 } from "@/lib/api";
 import { Sidebar } from "@/components/Sidebar";
 import { Timer } from "@/components/Timer";
@@ -36,11 +44,13 @@ const langMap: Record<string, () => ReturnType<typeof javascript>> = {
 };
 
 const STATUS_STYLES: Record<string, string> = {
-  open:     "bg-yellow-500/10 text-yellow-400 border-yellow-500/30",
-  pending:  "bg-yellow-500/10 text-yellow-400 border-yellow-500/30",
-  reviewed: "bg-blue-500/10 text-blue-400 border-blue-500/30",
-  approved: "bg-green-500/10 text-green-400 border-green-500/30",
-  rejected: "bg-red-500/10 text-red-400 border-red-500/30",
+  open:      "bg-sky-500/10 text-sky-400 border-sky-500/30",
+  in_review: "bg-purple-500/10 text-purple-400 border-purple-500/30",
+  resolved:  "bg-teal-500/10 text-teal-400 border-teal-500/30",
+  pending:   "bg-yellow-500/10 text-yellow-400 border-yellow-500/30",
+  reviewed:  "bg-blue-500/10 text-blue-400 border-blue-500/30",
+  approved:  "bg-green-500/10 text-green-400 border-green-500/30",
+  rejected:  "bg-red-500/10 text-red-400 border-red-500/30",
 };
 
 // ─── Render comment body with @mentions highlighted ────────────────────────
@@ -103,6 +113,12 @@ export default function ReviewPage() {
 
   const commentsEndRef = useRef<HTMLDivElement>(null);
 
+  // Votes & attachments
+  const [votes, setVotes]             = useState<Record<string, VoteTally>>({});
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [uploadingFile, setUploadingFile] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
       if (!data.user) { router.replace("/login"); return; }
@@ -122,12 +138,16 @@ export default function ReviewPage() {
     if (!params.id) return;
     setLoading(true);
     try {
-      const [sub, cmts] = await Promise.all([
+      const [sub, cmts, vts, atts] = await Promise.all([
         getSubmission(params.id),
         listReviewComments(params.id),
+        getSubmissionCommentVotes(params.id),
+        listAttachments(params.id),
       ]);
       setSubmission(sub);
       setComments(cmts);
+      setVotes(vts);
+      setAttachments(atts);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -265,6 +285,57 @@ export default function ReviewPage() {
     }
   };
 
+  const handleVote = async (commentId: string, vote: 1 | -1 | 0) => {
+    const tally = votes[commentId] ?? { upvotes: 0, downvotes: 0, net: 0, user_vote: 0 };
+    const current = tally.user_vote as 1 | -1 | 0;
+    const newVote = (current === vote ? 0 : vote) as 1 | -1 | 0;
+    // Optimistic update
+    setVotes((prev) => {
+      const t = prev[commentId] ?? { upvotes: 0, downvotes: 0, net: 0, user_vote: 0 };
+      const up = t.upvotes + (newVote === 1 ? 1 : 0) - (t.user_vote === 1 ? 1 : 0);
+      const dn = t.downvotes + (newVote === -1 ? 1 : 0) - (t.user_vote === -1 ? 1 : 0);
+      return { ...prev, [commentId]: { upvotes: up, downvotes: dn, net: up - dn, user_vote: newVote } };
+    });
+    try {
+      await voteComment(commentId, newVote);
+    } catch {
+      setVotes((prev) => ({ ...prev, [commentId]: tally }));
+    }
+  };
+
+  const handleUploadFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingFile(true);
+    try {
+      const att = await uploadAttachment(params.id, file);
+      setAttachments((prev) => [...prev, att]);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setUploadingFile(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  const handleDeleteAttachment = async (attachmentId: string) => {
+    try {
+      await deleteAttachment(params.id, attachmentId);
+      setAttachments((prev) => prev.filter((a) => a.id !== attachmentId));
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  };
+
+  const handleStatusChange = async (newStatus: "open" | "in_review" | "resolved") => {
+    try {
+      const updated = await changeSubmissionStatus(params.id, newStatus);
+      setSubmission(updated);
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  };
+
   // ─── Derived ──────────────────────────────────────────────────────────────
 
   // Backend returns user_id; type says author_id — check both
@@ -364,6 +435,70 @@ export default function ReviewPage() {
             )}
 
             <Timer submissionId={submission.id} isOwner={isOwner} />
+
+            {/* Status change (owner only) */}
+            {isOwner && (
+              <div>
+                <p className="text-[10px] uppercase tracking-wide text-zinc-600 mb-1">Change Status</p>
+                <select
+                  value={submission.status}
+                  onChange={(e) => handleStatusChange(e.target.value as "open" | "in_review" | "resolved")}
+                  className="w-full rounded border border-border bg-surface-muted/50 px-2 py-1.5 text-xs text-zinc-300 focus:border-accent focus:outline-none"
+                >
+                  <option value="open">Open</option>
+                  <option value="in_review">In Review</option>
+                  <option value="resolved">Resolved</option>
+                </select>
+              </div>
+            )}
+
+            {/* Attachments */}
+            <div className="pt-2 border-t border-border">
+              <p className="text-[10px] uppercase tracking-wide text-zinc-600 mb-2">Attachments</p>
+              {attachments.length === 0 ? (
+                <p className="text-xs text-zinc-600">No attachments.</p>
+              ) : (
+                <div className="space-y-1">
+                  {attachments.map((att) => (
+                    <div key={att.id} className="flex items-center gap-1.5 group">
+                      <a
+                        href={att.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex-1 text-xs text-accent hover:underline truncate"
+                      >
+                        {att.filename}
+                      </a>
+                      {isOwner && (
+                        <button
+                          onClick={() => handleDeleteAttachment(att.id)}
+                          className="text-[10px] text-zinc-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all"
+                        >
+                          ×
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+              {isOwner && (
+                <>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    className="hidden"
+                    onChange={handleUploadFile}
+                  />
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploadingFile}
+                    className="mt-2 w-full rounded-lg border border-dashed border-border py-1.5 text-xs text-zinc-500 hover:text-zinc-300 hover:border-zinc-500 transition-colors disabled:opacity-50"
+                  >
+                    {uploadingFile ? "Uploading…" : "+ Attach file"}
+                  </button>
+                </>
+              )}
+            </div>
 
             {/* Delete submission (owner only) */}
             {isOwner && (
@@ -492,9 +627,33 @@ export default function ReviewPage() {
                         <p className="text-xs text-zinc-300 break-words">
                           {renderBody(c.body)}
                         </p>
-                        <p className="text-[10px] text-zinc-600">
-                          {new Date(c.created_at).toLocaleTimeString()}
-                        </p>
+                        <div className="flex items-center justify-between mt-1">
+                          <p className="text-[10px] text-zinc-600">
+                            {new Date(c.created_at).toLocaleTimeString()}
+                          </p>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => handleVote(c.id, 1)}
+                              className={`flex items-center gap-0.5 text-[10px] transition-colors ${
+                                votes[c.id]?.user_vote === 1
+                                  ? "text-green-400"
+                                  : "text-zinc-600 hover:text-green-400"
+                              }`}
+                            >
+                              ▲ {votes[c.id]?.upvotes ?? 0}
+                            </button>
+                            <button
+                              onClick={() => handleVote(c.id, -1)}
+                              className={`flex items-center gap-0.5 text-[10px] transition-colors ${
+                                votes[c.id]?.user_vote === -1
+                                  ? "text-red-400"
+                                  : "text-zinc-600 hover:text-red-400"
+                              }`}
+                            >
+                              ▼ {votes[c.id]?.downvotes ?? 0}
+                            </button>
+                          </div>
+                        </div>
                       </>
                     )}
                   </div>

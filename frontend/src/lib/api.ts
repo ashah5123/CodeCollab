@@ -151,7 +151,7 @@ export type Submission = {
   title: string;
   language: string;
   code: string;
-  status: "pending" | "reviewed" | "approved" | "rejected";
+  status: "open" | "in_review" | "resolved" | "pending" | "reviewed" | "approved" | "rejected";
   author_id: string;
   author_email: string;
   created_at: string;
@@ -384,6 +384,87 @@ export async function listNotifications(): Promise<Notification[]> {
 
 export async function markNotificationsRead(): Promise<void> {
   await fetchWithAuth("/api/v1/notifications/read", { method: "PATCH" });
+}
+
+// ─── Attachments ──────────────────────────────────────────────────────────────
+
+export type Attachment = {
+  id: string;
+  submission_id: string;
+  filename: string;
+  url: string;
+  size: number;
+  content_type: string;
+  uploaded_by: string;
+  created_at: string;
+};
+
+export async function listAttachments(submissionId: string): Promise<Attachment[]> {
+  return fetchWithAuth(`/api/v1/submissions/${submissionId}/attachments`);
+}
+
+/** Upload a file as multipart form-data — does NOT use fetchWithAuth (no JSON header). */
+export async function uploadAttachment(submissionId: string, file: File): Promise<Attachment> {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) throw new Error("Not authenticated");
+
+  const form = new FormData();
+  form.append("file", file);
+
+  const res = await fetch(`${API_BASE}/api/v1/submissions/${submissionId}/attachments`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${session.access_token}` },
+    body: form,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as { detail?: string }).detail || res.statusText);
+  }
+  return res.json();
+}
+
+export async function deleteAttachment(submissionId: string, attachmentId: string): Promise<void> {
+  await fetchWithAuth(`/api/v1/submissions/${submissionId}/attachments/${attachmentId}`, {
+    method: "DELETE",
+  });
+}
+
+// ─── Comment Votes ─────────────────────────────────────────────────────────────
+
+export type VoteTally = {
+  upvotes: number;
+  downvotes: number;
+  net: number;
+  user_vote: number; // 1, -1, or 0
+};
+
+export async function getSubmissionCommentVotes(
+  submissionId: string
+): Promise<Record<string, VoteTally>> {
+  return fetchWithAuth(`/api/v1/submissions/${submissionId}/comment_votes`);
+}
+
+export async function voteComment(commentId: string, vote: 1 | -1 | 0): Promise<void> {
+  await fetchWithAuth(`/api/v1/comments/${commentId}/vote`, {
+    method: "POST",
+    body: JSON.stringify({ vote }),
+  });
+}
+
+export async function removeCommentVote(commentId: string): Promise<void> {
+  await fetchWithAuth(`/api/v1/comments/${commentId}/vote`, { method: "DELETE" });
+}
+
+// ─── Submission Status ─────────────────────────────────────────────────────────
+
+export async function changeSubmissionStatus(
+  submissionId: string,
+  newStatus: "open" | "in_review" | "resolved"
+): Promise<Submission> {
+  return fetchWithAuth(`/api/v1/submissions/${submissionId}/status`, {
+    method: "PATCH",
+    body: JSON.stringify({ status: newStatus }),
+  });
 }
 
 export async function sendOrgChatMessage(
