@@ -27,7 +27,8 @@ async function fetchWithAuth(path: string, options: RequestInit = {}) {
     throw new Error((err as { detail?: string }).detail || res.statusText);
   }
 
-  return res.json();
+  const text = await res.text();
+  return text ? JSON.parse(text) : null;
 }
 
 // ─── Rooms ────────────────────────────────────────────────────────────────────

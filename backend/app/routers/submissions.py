@@ -212,7 +212,7 @@ def edit_submission_comment(
     return updated.data[0] if updated.data else comment
 
 
-@router.delete("/{submission_id}/comments/{comment_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{submission_id}/comments/{comment_id}")
 def delete_submission_comment(
     submission_id: str,
     comment_id: str,
@@ -233,7 +233,7 @@ def delete_submission_comment(
     if row.data[0].get("user_id") != user.sub:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not the author")
     supabase_admin.table("comments").delete().eq("id", comment_id).execute()
-    return None
+    return {"message": "Comment deleted successfully"}
 
 
 @router.patch("/{submission_id}/status")
