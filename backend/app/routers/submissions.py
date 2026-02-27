@@ -70,7 +70,7 @@ def create_submission(
                 "title": body.title,
                 "code": body.code,
                 "language": body.language,
-                "description": body.description,
+                "problem_description": body.description,
                 "status": "pending",
             }
         )
@@ -136,7 +136,7 @@ def update_submission_description(
     _require_owner(submission, user)
     row = (
         supabase_admin.table("submissions")
-        .update({"description": body.description})
+        .update({"problem_description": body.description})
         .eq("id", submission_id)
         .execute()
     )
