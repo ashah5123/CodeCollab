@@ -202,6 +202,27 @@ export async function addReviewComment(
   });
 }
 
+export async function editComment(
+  submissionId: string,
+  commentId: string,
+  body: string
+): Promise<ReviewComment> {
+  return fetchWithAuth(`/api/v1/submissions/${submissionId}/comments/${commentId}`, {
+    method: "PUT",
+    body: JSON.stringify({ body }),
+  });
+}
+
+export async function deleteComment(submissionId: string, commentId: string): Promise<void> {
+  await fetchWithAuth(`/api/v1/submissions/${submissionId}/comments/${commentId}`, {
+    method: "DELETE",
+  });
+}
+
+export async function deleteSubmission(submissionId: string): Promise<void> {
+  await fetchWithAuth(`/api/v1/submissions/${submissionId}`, { method: "DELETE" });
+}
+
 export async function approveSubmission(submissionId: string, feedback?: string): Promise<Submission> {
   return fetchWithAuth(`/api/v1/submissions/${submissionId}/approve`, {
     method: "POST",

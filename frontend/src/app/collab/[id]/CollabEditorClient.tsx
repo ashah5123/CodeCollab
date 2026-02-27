@@ -16,6 +16,7 @@ import {
 import type { DecorationSet, ViewUpdate } from "@codemirror/view";
 import { StateField, StateEffect } from "@codemirror/state";
 import type { Range } from "@codemirror/state";
+import { deleteCollabRoom } from "@/lib/api";
 import {
   setupCollabChannel,
   type CursorPosition,
@@ -296,6 +297,7 @@ type CollabEditorClientProps = {
   initialCode: string;
   userEmail: string;
   userId: string;
+  roomCreatedBy: string;
 };
 
 export function CollabEditorClient({
@@ -305,10 +307,13 @@ export function CollabEditorClient({
   initialCode,
   userEmail,
   userId,
+  roomCreatedBy,
 }: CollabEditorClientProps) {
   const [code, setCode] = useState(initialCode);
   const [language] = useState(roomLanguage);
   const [savedToast, setSavedToast] = useState(false);
+  const [deleteRoomConfirmOpen, setDeleteRoomConfirmOpen] = useState(false);
+  const [deleteRoomLoading, setDeleteRoomLoading] = useState(false);
   const [members, setMembers] = useState<MemberInfo[]>([]);
   const [chatMessages, setChatMessages] = useState<RoomChatMessage[]>([]);
   const [chatInput, setChatInput] = useState("");
@@ -484,6 +489,17 @@ export function CollabEditorClient({
     window.location.href = "/dashboard";
   }, [roomId, code]);
 
+  const handleDeleteRoom = useCallback(async () => {
+    setDeleteRoomLoading(true);
+    try {
+      await deleteCollabRoom(roomId);
+      window.location.href = "/collab";
+    } catch {
+      setDeleteRoomLoading(false);
+      setDeleteRoomConfirmOpen(false);
+    }
+  }, [roomId]);
+
   const sendChat = (e: React.FormEvent) => {
     e.preventDefault();
     const msg = chatInput.trim();
@@ -554,6 +570,15 @@ export function CollabEditorClient({
           >
             Submit to Review
           </button>
+          {userId === roomCreatedBy && (
+            <button
+              type="button"
+              onClick={() => setDeleteRoomConfirmOpen(true)}
+              className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-xs font-medium text-red-400 hover:bg-red-500/20"
+            >
+              Delete Room
+            </button>
+          )}
         </div>
       </header>
 
@@ -669,5 +694,39 @@ export function CollabEditorClient({
         </aside>
       </div>
     </div>
+
+    {/* ── Confirm: delete room ── */}
+    {deleteRoomConfirmOpen && (
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+        onClick={() => { if (!deleteRoomLoading) setDeleteRoomConfirmOpen(false); }}
+      >
+        <div
+          className="w-full max-w-sm rounded-xl border border-border bg-surface p-6 shadow-xl"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <p className="text-sm font-medium text-white mb-1">Delete this room?</p>
+          <p className="text-xs text-zinc-500 mb-4">
+            All members will lose access and the code will be gone. This cannot be undone.
+          </p>
+          <div className="flex gap-2">
+            <button
+              onClick={() => { if (!deleteRoomLoading) setDeleteRoomConfirmOpen(false); }}
+              disabled={deleteRoomLoading}
+              className="flex-1 rounded-lg border border-border py-2 text-sm text-zinc-300 hover:bg-surface-muted disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleDeleteRoom}
+              disabled={deleteRoomLoading}
+              className="flex-1 rounded-lg bg-red-500/20 border border-red-500/30 py-2 text-sm text-red-400 hover:bg-red-500/30 disabled:opacity-50"
+            >
+              {deleteRoomLoading ? "Deleting…" : "Delete Room"}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
   );
 }

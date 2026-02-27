@@ -210,11 +210,6 @@ def leave_organisation(
         )
         if not org.data:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Organisation not found")
-        if org.data.get("created_by") == user.sub:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Admin cannot leave; delete the organisation instead",
-            )
         result = (
             supabase_admin.table("organisation_members")
             .delete()

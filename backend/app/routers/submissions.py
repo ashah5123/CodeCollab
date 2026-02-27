@@ -177,6 +177,65 @@ def add_submission_comment(
     return row.data[0]
 
 
+class CommentUpdate(BaseModel):
+    body: str = Field(min_length=1, max_length=2000)
+
+
+@router.put("/{submission_id}/comments/{comment_id}")
+def edit_submission_comment(
+    submission_id: str,
+    comment_id: str,
+    body: CommentUpdate,
+    user: JWTPayload = Depends(get_current_user),
+):
+    try:
+        row = (
+            supabase_admin.table("comments")
+            .select("*")
+            .eq("id", comment_id)
+            .eq("submission_id", submission_id)
+            .execute()
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Comment not found") from exc
+    if not row.data:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Comment not found")
+    comment = row.data[0]
+    if comment.get("user_id") != user.sub:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not the author")
+    updated = (
+        supabase_admin.table("comments")
+        .update({"body": body.body})
+        .eq("id", comment_id)
+        .execute()
+    )
+    return updated.data[0] if updated.data else comment
+
+
+@router.delete("/{submission_id}/comments/{comment_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_submission_comment(
+    submission_id: str,
+    comment_id: str,
+    user: JWTPayload = Depends(get_current_user),
+):
+    try:
+        row = (
+            supabase_admin.table("comments")
+            .select("user_id")
+            .eq("id", comment_id)
+            .eq("submission_id", submission_id)
+            .execute()
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Comment not found") from exc
+    if not row.data:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Comment not found")
+    if row.data[0].get("user_id") != user.sub:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not the author")
+    supabase_admin.table("comments").delete().eq("id", comment_id).execute()
+    return None
+
+
 @router.patch("/{submission_id}/status")
 def update_submission_status(
     submission_id: str,

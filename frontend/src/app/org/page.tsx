@@ -54,6 +54,10 @@ export default function OrgPage() {
   const [error, setError] = useState<string | null>(null);
   const [leaveConfirmOpen, setLeaveConfirmOpen] = useState(false);
   const [leaveLoading, setLeaveLoading] = useState(false);
+  const [joinAnotherOpen, setJoinAnotherOpen] = useState(false);
+  const [joinAnotherCode, setJoinAnotherCode] = useState("");
+  const [joinAnotherLoading, setJoinAnotherLoading] = useState(false);
+  const [joinAnotherError, setJoinAnotherError] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const isCreatorOrAdmin = org?.created_by === me?.id || org?.role === "owner" || org?.role === "admin";
@@ -157,6 +161,24 @@ export default function OrgPage() {
       setError((err as Error).message ?? "Failed to leave organisation.");
     } finally {
       setLeaveLoading(false);
+    }
+  };
+
+  const handleJoinAnother = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!joinAnotherCode.trim()) return;
+    setJoinAnotherLoading(true);
+    setJoinAnotherError(null);
+    try {
+      await joinOrg(joinAnotherCode.trim());
+      setJoinAnotherCode("");
+      setJoinAnotherOpen(false);
+      router.refresh();
+      await fetchAll();
+    } catch (err) {
+      setJoinAnotherError((err as Error).message || "Invalid invite code.");
+    } finally {
+      setJoinAnotherLoading(false);
     }
   };
 
@@ -422,20 +444,69 @@ export default function OrgPage() {
               </div>
             )}
 
-            {!isCreatorOrAdmin && (
-              <div className="pt-2 border-t border-border">
-                <button
-                  type="button"
-                  onClick={() => setLeaveConfirmOpen(true)}
-                  className="w-full rounded-lg border border-red-500/30 bg-red-500/10 py-2 text-xs font-medium text-red-400 hover:bg-red-500/20 transition-colors"
-                >
-                  Leave Organisation
-                </button>
-              </div>
-            )}
+            <div className="pt-2 border-t border-border space-y-2">
+              <button
+                type="button"
+                onClick={() => setJoinAnotherOpen(true)}
+                className="w-full rounded-lg border border-border bg-surface-muted/30 py-2 text-xs font-medium text-zinc-300 hover:bg-surface-muted transition-colors"
+              >
+                Join Another Org
+              </button>
+              <button
+                type="button"
+                onClick={() => setLeaveConfirmOpen(true)}
+                className="w-full rounded-lg border border-red-500/30 bg-red-500/10 py-2 text-xs font-medium text-red-400 hover:bg-red-500/20 transition-colors"
+              >
+                Leave Organisation
+              </button>
+            </div>
           </aside>
         </div>
       </div>
+
+      {/* Join another org modal */}
+      {joinAnotherOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+          onClick={() => { if (!joinAnotherLoading) { setJoinAnotherOpen(false); setJoinAnotherError(null); } }}
+        >
+          <div
+            className="w-full max-w-sm rounded-xl border border-border bg-surface p-6 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="text-sm font-semibold text-white mb-4">Join Another Organisation</h2>
+            <form onSubmit={handleJoinAnother} className="space-y-3">
+              <input
+                type="text"
+                value={joinAnotherCode}
+                onChange={(e) => setJoinAnotherCode(e.target.value)}
+                placeholder="Invite code"
+                className="w-full rounded-lg border border-border bg-surface-muted/40 px-3 py-2.5 text-sm text-white placeholder:text-zinc-600 focus:border-accent focus:outline-none font-mono tracking-widest text-center"
+              />
+              {joinAnotherError && (
+                <p className="text-xs text-red-400">{joinAnotherError}</p>
+              )}
+              <div className="flex gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => { if (!joinAnotherLoading) { setJoinAnotherOpen(false); setJoinAnotherError(null); } }}
+                  disabled={joinAnotherLoading}
+                  className="flex-1 rounded-lg border border-border py-2 text-sm text-zinc-300 hover:bg-surface-muted disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={joinAnotherLoading || !joinAnotherCode.trim()}
+                  className="flex-1 rounded-lg bg-accent py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+                >
+                  {joinAnotherLoading ? "Joining…" : "Join"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Leave confirmation dialog */}
       {leaveConfirmOpen && (
