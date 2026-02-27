@@ -1,4 +1,5 @@
 import logging
+import re
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
@@ -28,6 +29,45 @@ class CodeUpdate(BaseModel):
 
 class DescriptionUpdate(BaseModel):
     description: str = Field(max_length=2000)
+
+
+def _notify_mentions(comment_body: str, submission_id: str, from_email: str) -> None:
+    """Parse @email mentions and silently create in-app notifications for each mentioned user."""
+    try:
+        # Match @user@domain.tld — the full email address after the leading @
+        emails = set(re.findall(r"@([\w.+-]+@[\w.+-]+\.[a-zA-Z]{2,})", comment_body))
+        for email in emails:
+            if email == from_email:
+                continue
+            # Look up user_id by email — try comments table first, then submissions
+            result = (
+                supabase_admin.table("comments")
+                .select("user_id")
+                .eq("user_email", email)
+                .limit(1)
+                .execute()
+            )
+            if not result.data:
+                result = (
+                    supabase_admin.table("submissions")
+                    .select("user_id")
+                    .eq("user_email", email)
+                    .limit(1)
+                    .execute()
+                )
+            if not result.data:
+                continue
+            target_user_id = result.data[0]["user_id"]
+            supabase_admin.table("notifications").insert(
+                {
+                    "user_id": target_user_id,
+                    "message": f"{from_email} mentioned you in a review comment",
+                    "type": "mention",
+                    "is_read": False,
+                }
+            ).execute()
+    except Exception:
+        pass  # Never block comment creation due to notification errors
 
 
 def _get_submission_or_404(submission_id: str) -> dict:
@@ -174,7 +214,10 @@ def add_submission_comment(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to create comment",
         )
-    return row.data[0]
+    comment = row.data[0]
+    # Fire-and-forget: notify any @mentioned users
+    _notify_mentions(body.body, submission_id, user.email or "")
+    return comment
 
 
 class CommentUpdate(BaseModel):

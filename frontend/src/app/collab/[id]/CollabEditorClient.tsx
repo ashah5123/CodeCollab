@@ -17,6 +17,7 @@ import type { DecorationSet, ViewUpdate } from "@codemirror/view";
 import { StateField, StateEffect } from "@codemirror/state";
 import type { Range } from "@codemirror/state";
 import { deleteCollabRoom } from "@/lib/api";
+import { VoiceVideoCall } from "@/components/VoiceVideoCall";
 import {
   setupCollabChannel,
   type CursorPosition,
@@ -557,6 +558,7 @@ export function CollabEditorClient({
           {savedToast && (
             <span className="text-sm text-green-400">Saved!</span>
           )}
+          <VoiceVideoCall roomId={roomId} userEmail={userEmail} />
           <button
             type="button"
             onClick={handleSaveSnapshot}

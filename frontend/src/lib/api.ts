@@ -367,6 +367,25 @@ export async function getOrgChatMessages(orgId: string): Promise<OrgChatMessage[
   return fetchWithAuth(`/organisations/${orgId}/chat`).catch(() => []);
 }
 
+// ─── Notifications ────────────────────────────────────────────────────────────
+
+export type Notification = {
+  id: string;
+  user_id: string;
+  message: string;
+  type: string;
+  is_read: boolean;
+  created_at: string;
+};
+
+export async function listNotifications(): Promise<Notification[]> {
+  return fetchWithAuth("/api/v1/notifications");
+}
+
+export async function markNotificationsRead(): Promise<void> {
+  await fetchWithAuth("/api/v1/notifications/read", { method: "PATCH" });
+}
+
 export async function sendOrgChatMessage(
   orgId: string,
   body: string,

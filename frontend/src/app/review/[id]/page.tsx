@@ -19,8 +19,11 @@ import {
   deleteSubmission,
   approveSubmission,
   rejectSubmission,
+  getMyOrg,
+  getOrgMembers,
   type Submission,
   type ReviewComment,
+  type OrgMember,
 } from "@/lib/api";
 import { Sidebar } from "@/components/Sidebar";
 import { Timer } from "@/components/Timer";
@@ -40,33 +43,60 @@ const STATUS_STYLES: Record<string, string> = {
   rejected: "bg-red-500/10 text-red-400 border-red-500/30",
 };
 
+// ─── Render comment body with @mentions highlighted ────────────────────────
+
+function renderBody(text: string) {
+  // Split on @email@domain.tld patterns; anything else is plain text
+  const parts = text.split(/(@[\w.+-]+@[\w.+-]+\.[a-zA-Z]{2,})/g);
+  return (
+    <>
+      {parts.map((part, i) =>
+        /^@[\w.+-]+@[\w.+-]+\.[a-zA-Z]{2,}$/.test(part) ? (
+          <span key={i} className="text-blue-400 font-medium">{part}</span>
+        ) : (
+          <span key={i}>{part}</span>
+        )
+      )}
+    </>
+  );
+}
+
 export default function ReviewPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
 
   // Auth
-  const [userId, setUserId] = useState<string | null>(null);
+  const [userId, setUserId]       = useState<string | null>(null);
   const [userEmail, setUserEmail] = useState<string | null>(null);
 
   // Data
   const [submission, setSubmission] = useState<Submission | null>(null);
-  const [comments, setComments] = useState<ReviewComment[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [comments, setComments]     = useState<ReviewComment[]>([]);
+  const [loading, setLoading]       = useState(true);
+  const [error, setError]           = useState<string | null>(null);
+
+  // Org members (for @mention)
+  const [orgMembers, setOrgMembers] = useState<OrgMember[]>([]);
 
   // Add comment form
   const [commentBody, setCommentBody] = useState("");
   const [commentLine, setCommentLine] = useState("");
-  const [submitting, setSubmitting] = useState(false);
+  const [submitting, setSubmitting]   = useState(false);
+
+  // @mention dropdown state
+  const [mentionOpen, setMentionOpen]     = useState(false);
+  const [mentionQuery, setMentionQuery]   = useState("");
+  const [mentionAnchor, setMentionAnchor] = useState(0);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   // Edit comment
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
-  const [editBody, setEditBody] = useState("");
+  const [editBody, setEditBody]                 = useState("");
 
   // Confirm dialogs
   const [deleteCommentConfirmId, setDeleteCommentConfirmId] = useState<string | null>(null);
-  const [deleteSubConfirmOpen, setDeleteSubConfirmOpen] = useState(false);
-  const [actionLoading, setActionLoading] = useState(false);
+  const [deleteSubConfirmOpen, setDeleteSubConfirmOpen]     = useState(false);
+  const [actionLoading, setActionLoading]                   = useState(false);
 
   // Review
   const [feedback, setFeedback] = useState("");
@@ -80,6 +110,13 @@ export default function ReviewPage() {
       setUserEmail(data.user.email ?? null);
     });
   }, [router]);
+
+  // Load org members for @mention dropdown
+  useEffect(() => {
+    getMyOrg().then((org) => {
+      if (org) getOrgMembers(org.id).then(setOrgMembers);
+    });
+  }, []);
 
   const fetchAll = useCallback(async () => {
     if (!params.id) return;
@@ -103,7 +140,45 @@ export default function ReviewPage() {
     commentsEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [comments]);
 
-  // ─── Handlers ────────────────────────────────────────────────────────────────
+  // ─── @mention helpers ─────────────────────────────────────────────────────
+
+  const filteredMembers = orgMembers
+    .filter((m) => {
+      const email = m.user_email?.toLowerCase() ?? "";
+      return email.includes(mentionQuery.toLowerCase());
+    })
+    .slice(0, 5);
+
+  const handleCommentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const val = e.target.value;
+    setCommentBody(val);
+
+    const cursor = e.target.selectionStart ?? val.length;
+    const textBeforeCursor = val.slice(0, cursor);
+    // Match @ followed by non-@ non-space chars (partial email / username before @)
+    const match = textBeforeCursor.match(/@([^@\s]*)$/);
+    if (match) {
+      setMentionQuery(match[1]);
+      setMentionAnchor(cursor - match[0].length); // index of the @
+      setMentionOpen(true);
+    } else {
+      setMentionOpen(false);
+      setMentionQuery("");
+    }
+  };
+
+  const insertMention = (email: string) => {
+    const before = commentBody.slice(0, mentionAnchor);
+    const after  = commentBody.slice(mentionAnchor + 1 + mentionQuery.length);
+    const next   = `${before}@${email} ${after}`;
+    setCommentBody(next);
+    setMentionOpen(false);
+    setMentionQuery("");
+    // Restore focus to textarea
+    setTimeout(() => textareaRef.current?.focus(), 0);
+  };
+
+  // ─── Handlers ─────────────────────────────────────────────────────────────
 
   const handleAddComment = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -190,7 +265,7 @@ export default function ReviewPage() {
     }
   };
 
-  // ─── Derived ─────────────────────────────────────────────────────────────────
+  // ─── Derived ──────────────────────────────────────────────────────────────
 
   // Backend returns user_id; type says author_id — check both
   const isOwner =
@@ -206,7 +281,7 @@ export default function ReviewPage() {
     ? [EditorView.lineWrapping, EditorView.editable.of(false), (langMap[submission.language] || javascript)()]
     : [];
 
-  // ─── Loading / error screens ─────────────────────────────────────────────────
+  // ─── Loading / error screens ──────────────────────────────────────────────
 
   if (loading) {
     return (
@@ -235,7 +310,7 @@ export default function ReviewPage() {
     );
   }
 
-  // ─── Main render ─────────────────────────────────────────────────────────────
+  // ─── Main render ──────────────────────────────────────────────────────────
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -413,7 +488,10 @@ export default function ReviewPage() {
                             )}
                           </div>
                         </div>
-                        <p className="text-xs text-zinc-300 break-words">{c.body}</p>
+                        {/* Render body with @mentions highlighted in blue */}
+                        <p className="text-xs text-zinc-300 break-words">
+                          {renderBody(c.body)}
+                        </p>
                         <p className="text-[10px] text-zinc-600">
                           {new Date(c.created_at).toLocaleTimeString()}
                         </p>
@@ -425,6 +503,7 @@ export default function ReviewPage() {
               <div ref={commentsEndRef} />
             </div>
 
+            {/* Comment form with @mention dropdown */}
             <form onSubmit={handleAddComment} className="shrink-0 border-t border-border p-3 space-y-2">
               <input
                 type="number"
@@ -434,13 +513,38 @@ export default function ReviewPage() {
                 onChange={(e) => setCommentLine(e.target.value)}
                 className="w-full rounded border border-border bg-surface-muted/50 px-2 py-1.5 text-xs text-white placeholder:text-zinc-600 focus:border-accent focus:outline-none"
               />
-              <textarea
-                placeholder="Add a comment…"
-                value={commentBody}
-                onChange={(e) => setCommentBody(e.target.value)}
-                rows={2}
-                className="w-full rounded border border-border bg-surface-muted/50 px-2 py-1.5 text-xs text-white placeholder:text-zinc-600 focus:border-accent focus:outline-none resize-none"
-              />
+
+              {/* Textarea wrapped in relative div for dropdown positioning */}
+              <div className="relative">
+                {mentionOpen && filteredMembers.length > 0 && (
+                  <div className="absolute bottom-full left-0 right-0 mb-1 bg-surface border border-border rounded-lg shadow-xl z-10 overflow-hidden">
+                    {filteredMembers.map((m) => (
+                      <button
+                        key={m.id}
+                        type="button"
+                        className="w-full px-3 py-1.5 text-left text-xs text-zinc-300 hover:bg-surface-muted flex items-center gap-2"
+                        onMouseDown={(e) => {
+                          e.preventDefault(); // keep textarea focus
+                          insertMention(m.user_email ?? "");
+                        }}
+                      >
+                        <span className="text-blue-400">@</span>
+                        <span className="truncate">{m.user_email}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <textarea
+                  ref={textareaRef}
+                  placeholder="Add a comment… (type @ to mention)"
+                  value={commentBody}
+                  onChange={handleCommentChange}
+                  onBlur={() => setTimeout(() => setMentionOpen(false), 150)}
+                  rows={2}
+                  className="w-full rounded border border-border bg-surface-muted/50 px-2 py-1.5 text-xs text-white placeholder:text-zinc-600 focus:border-accent focus:outline-none resize-none"
+                />
+              </div>
+
               <button
                 type="submit"
                 disabled={submitting || !commentBody.trim()}
