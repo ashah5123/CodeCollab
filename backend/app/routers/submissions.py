@@ -31,16 +31,18 @@ class DescriptionUpdate(BaseModel):
 
 
 def _get_submission_or_404(submission_id: str) -> dict:
-    row = (
-        supabase_admin.table("submissions")
-        .select("*")
-        .eq("id", submission_id)
-        .single()
-        .execute()
-    )
+    try:
+        row = (
+            supabase_admin.table("submissions")
+            .select("*")
+            .eq("id", submission_id)
+            .execute()
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Submission not found") from exc
     if not row.data:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Submission not found")
-    return row.data
+    return row.data[0]
 
 
 def _require_owner(submission: dict, user: JWTPayload) -> None:
@@ -103,7 +105,76 @@ def get_submission(
     submission_id: str,
     user: JWTPayload = Depends(get_current_user),
 ):
-    return _get_submission_or_404(submission_id)
+    try:
+        row = (
+            supabase_admin.table("submissions")
+            .select("id, user_id, user_email, title, code, language, status, problem_description, created_at")
+            .eq("id", submission_id)
+            .execute()
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Submission not found") from exc
+    if not row.data:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Submission not found")
+    submission = row.data[0]
+
+    comments_row = (
+        supabase_admin.table("comments")
+        .select("*")
+        .eq("submission_id", submission_id)
+        .order("created_at", desc=False)
+        .execute()
+    )
+    submission["comments"] = comments_row.data or []
+    return submission
+
+
+@router.get("/{submission_id}/comments")
+def list_submission_comments(
+    submission_id: str,
+    user: JWTPayload = Depends(get_current_user),
+):
+    rows = (
+        supabase_admin.table("comments")
+        .select("*")
+        .eq("submission_id", submission_id)
+        .order("created_at", desc=False)
+        .execute()
+    )
+    return rows.data or []
+
+
+class CommentCreate(BaseModel):
+    body: str = Field(min_length=1, max_length=2000)
+    line_number: int | None = None
+
+
+@router.post("/{submission_id}/comments", status_code=status.HTTP_201_CREATED)
+def add_submission_comment(
+    submission_id: str,
+    body: CommentCreate,
+    user: JWTPayload = Depends(get_current_user),
+):
+    _get_submission_or_404(submission_id)
+    row = (
+        supabase_admin.table("comments")
+        .insert(
+            {
+                "submission_id": submission_id,
+                "user_id": user.sub,
+                "user_email": user.email or "",
+                "body": body.body,
+                "line_number": body.line_number,
+            }
+        )
+        .execute()
+    )
+    if not row.data:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to create comment",
+        )
+    return row.data[0]
 
 
 @router.patch("/{submission_id}/status")
