@@ -319,7 +319,7 @@ export type OrgChatMessage = {
   id: string;
   user_email: string;
   user_name: string;
-  body: string;
+  content: string;
   created_at: string;
 };
 
@@ -474,6 +474,6 @@ export async function sendOrgChatMessage(
 ): Promise<OrgChatMessage> {
   return fetchWithAuth(`/organisations/${orgId}/chat`, {
     method: "POST",
-    body: JSON.stringify({ body, user_name: userName }),
+    body: JSON.stringify({ content: body, user_name: userName }),
   });
 }

@@ -372,7 +372,7 @@ export default function OrgPage() {
                               })}
                             </span>
                           </div>
-                          <p className="text-sm text-zinc-300 mt-0.5 break-words">{msg.body}</p>
+                          <p className="text-sm text-zinc-300 mt-0.5 break-words">{msg.content}</p>
                         </div>
                       </div>
                     ))
