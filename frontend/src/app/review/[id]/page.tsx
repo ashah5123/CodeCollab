@@ -138,16 +138,21 @@ export default function ReviewPage() {
     if (!params.id) return;
     setLoading(true);
     try {
-      const [sub, cmts, vts, atts] = await Promise.all([
+      const [subResult, cmtsResult, vtsResult, attsResult] = await Promise.allSettled([
         getSubmission(params.id),
         listReviewComments(params.id),
         getSubmissionCommentVotes(params.id),
         listAttachments(params.id),
       ]);
-      setSubmission(sub);
-      setComments(cmts);
-      setVotes(vts);
-      setAttachments(atts);
+
+      if (subResult.status === "rejected") {
+        setError((subResult.reason as Error).message ?? "Failed to load submission");
+        return;
+      }
+      setSubmission(subResult.value);
+      if (cmtsResult.status === "fulfilled")  setComments(cmtsResult.value);
+      if (vtsResult.status === "fulfilled")   setVotes(vtsResult.value);
+      if (attsResult.status === "fulfilled")  setAttachments(attsResult.value);
     } catch (e) {
       setError((e as Error).message);
     } finally {

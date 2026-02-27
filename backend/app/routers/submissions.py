@@ -31,6 +31,10 @@ class DescriptionUpdate(BaseModel):
     description: str = Field(max_length=2000)
 
 
+class ReviewDecision(BaseModel):
+    feedback: str | None = Field(default=None, max_length=2000)
+
+
 def _notify_mentions(comment_body: str, submission_id: str, from_email: str) -> None:
     """Parse @email mentions and silently create in-app notifications for each mentioned user."""
     try:
@@ -367,6 +371,44 @@ def update_submission_description(
         .execute()
     )
     return row.data[0] if row.data else submission
+
+
+@router.post("/{submission_id}/approve")
+def approve_submission(
+    submission_id: str,
+    body: ReviewDecision,
+    user: JWTPayload = Depends(get_current_user),
+):
+    submission = _get_submission_or_404(submission_id)
+    update_data: dict = {"status": "approved"}
+    if body.feedback:
+        update_data["feedback"] = body.feedback
+    row = (
+        supabase_admin.table("submissions")
+        .update(update_data)
+        .eq("id", submission_id)
+        .execute()
+    )
+    return row.data[0] if row.data else {**submission, **update_data}
+
+
+@router.post("/{submission_id}/reject")
+def reject_submission(
+    submission_id: str,
+    body: ReviewDecision,
+    user: JWTPayload = Depends(get_current_user),
+):
+    submission = _get_submission_or_404(submission_id)
+    update_data: dict = {"status": "rejected"}
+    if body.feedback:
+        update_data["feedback"] = body.feedback
+    row = (
+        supabase_admin.table("submissions")
+        .update(update_data)
+        .eq("id", submission_id)
+        .execute()
+    )
+    return row.data[0] if row.data else {**submission, **update_data}
 
 
 @router.delete("/{submission_id}", status_code=status.HTTP_204_NO_CONTENT)
