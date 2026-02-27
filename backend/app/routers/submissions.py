@@ -164,7 +164,7 @@ def add_submission_comment(
                 "user_id": user.sub,
                 "user_email": user.email or "",
                 "body": body.body,
-                "line_number": body.line_number,
+                "line_number": body.line_number if body.line_number is not None else 0,
             }
         )
         .execute()
