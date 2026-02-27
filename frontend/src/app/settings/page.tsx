@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase";
+import { supabase } from "@/lib/supabase";
 import { getProfile, updateProfile, type UserProfile } from "@/lib/api";
 import { Sidebar } from "@/components/Sidebar";
 
@@ -41,7 +41,6 @@ export default function SettingsPage() {
   }, []);
 
   useEffect(() => {
-    const supabase = createClient();
     supabase.auth.getUser().then(({ data }) => {
       if (!data.user) { router.replace("/login"); return; }
       setEmail(data.user.email ?? "");
@@ -77,7 +76,6 @@ export default function SettingsPage() {
     if (!newPassword) return;
     setPwSaving(true);
     setPwMsg(null);
-    const supabase = createClient();
     const { error } = await supabase.auth.updateUser({ password: newPassword });
     if (error) {
       setPwMsg({ type: "error", text: error.message });

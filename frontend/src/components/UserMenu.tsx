@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase";
+import { supabase } from "@/lib/supabase";
 
 const AVATAR_COLORS = ["#3b82f6", "#a855f7", "#22c55e", "#f97316"];
 
@@ -28,7 +28,6 @@ export function UserMenu({ user: userProp }: UserMenuProps = {}) {
   // Resolve user if not passed as prop
   useEffect(() => {
     if (userProp) return;
-    const supabase = createClient();
     supabase.auth.getUser().then(({ data }) => {
       if (data.user)
         setUser({ id: data.user.id, email: data.user.email ?? "" });
@@ -58,7 +57,6 @@ export function UserMenu({ user: userProp }: UserMenuProps = {}) {
 
   async function handleSignOut() {
     setOpen(false);
-    const supabase = createClient();
     await supabase.auth.signOut();
     router.push("/");
     router.refresh();

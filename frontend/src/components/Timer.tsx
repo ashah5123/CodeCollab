@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { createClient } from "@/lib/supabase";
+import { supabase } from "@/lib/supabase";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -57,7 +57,7 @@ export function Timer({ submissionId, isOwner }: TimerProps) {
   // interval callback so we never read stale state.
   const secondsLeftRef = useRef(25 * 60);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const channelRef = useRef<ReturnType<typeof createClient>["channel"] extends (...a: never[]) => infer R ? R : never | null>(null as never);
+  const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null as never);
 
   const isEditable = isOwner && status !== "running";
   const totalInput = mins * 60 + secs;
@@ -90,7 +90,6 @@ export function Timer({ submissionId, isOwner }: TimerProps) {
 
   // ── Supabase realtime subscription ─────────────────────────────────────────
   useEffect(() => {
-    const supabase = createClient();
     const ch = supabase
       .channel(`timer:${submissionId}`)
       .on("broadcast", { event: "timer" }, ({ payload }) => {

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase";
+import { supabase } from "@/lib/supabase";
 import { Sidebar } from "@/components/Sidebar";
 import { UserMenu } from "@/components/UserMenu";
 
@@ -39,8 +39,6 @@ export default function ChatPage() {
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
-  const supabase = createClient();
-
   const fetchMessages = useCallback(async () => {
     const { data } = await supabase
       .from("global_chat_messages")

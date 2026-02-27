@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase";
+import { supabase } from "@/lib/supabase";
 import {
   listCollabRooms,
   createCollabRoom,
@@ -38,14 +38,12 @@ export default function CollabRoomsPage() {
   const [createError, setCreateError] = useState<string | null>(null);
 
   useEffect(() => {
-    const supabase = createClient();
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (!user) router.replace("/login?redirect=/collab");
     });
   }, [router]);
 
   const fetchRooms = useCallback(async () => {
-    const supabase = createClient();
     const session = await supabase.auth.getSession();
     const token = session.data.session?.access_token;
     if (!token) return;
@@ -64,7 +62,6 @@ export default function CollabRoomsPage() {
   }, [fetchRooms]);
 
   useEffect(() => {
-    const supabase = createClient();
     const channel = supabase
       .channel("collab-rooms-list")
       .on(
@@ -90,7 +87,6 @@ export default function CollabRoomsPage() {
     setCreateError(null);
     setCreateLoading(true);
     try {
-      const supabase = createClient();
       const session = await supabase.auth.getSession();
       const token = session.data.session?.access_token;
       if (!token) {

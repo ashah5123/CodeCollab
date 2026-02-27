@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase";
+import { supabase } from "@/lib/supabase";
 import { listSubmissions, type Submission } from "@/lib/api";
 import { Sidebar } from "@/components/Sidebar";
 import { UserMenu } from "@/components/UserMenu";
@@ -32,7 +32,6 @@ export default function ReviewListPage() {
   const [error, setError] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
-    const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { router.replace("/login"); return; }
 

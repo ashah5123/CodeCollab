@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { createClient } from "@/lib/supabase";
+import { supabase } from "@/lib/supabase";
 import { User } from "@supabase/supabase-js";
 import { CodeEditor } from "@/components/CodeEditor";
 import { CommentList } from "./CommentList";
@@ -29,7 +29,6 @@ export function RoomClient({
   initialLanguage,
   user,
 }: RoomClientProps) {
-  const supabase = createClient();
   const [content, setContent] = useState(initialContent);
   const [language, setLanguage] = useState(initialLanguage);
   const [copied, setCopied] = useState(false);

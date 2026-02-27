@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase";
+import { supabase } from "@/lib/supabase";
 
 type Comment = {
   id: string;
@@ -19,7 +19,6 @@ type CommentListProps = {
 };
 
 export function CommentList({ documentId, currentUserId }: CommentListProps) {
-  const supabase = createClient();
   const [comments, setComments] = useState<Comment[]>([]);
   const [lineInput, setLineInput] = useState("");
   const [bodyInput, setBodyInput] = useState("");

@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense, useState } from "react";
-import { createClient } from "@/lib/supabase";
+import { supabase } from "@/lib/supabase";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 
@@ -13,8 +13,6 @@ function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const redirectTo = searchParams.get("redirect") || "/dashboard";
-  const supabase = createClient();
-
   async function handleSignUp(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);

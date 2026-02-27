@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase";
+import { supabase } from "@/lib/supabase";
 import {
   getMyOrg,
   getOrgMembers,
@@ -74,7 +74,6 @@ export default function OrgPage() {
   }, []);
 
   useEffect(() => {
-    const supabase = createClient();
     supabase.auth.getUser().then(({ data }) => {
       if (!data.user) { router.replace("/login"); return; }
       setMe({ id: data.user.id, email: data.user.email ?? "" });

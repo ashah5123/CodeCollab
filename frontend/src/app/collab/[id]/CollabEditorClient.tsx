@@ -16,7 +16,7 @@ import {
 import type { DecorationSet, ViewUpdate } from "@codemirror/view";
 import { StateField, StateEffect } from "@codemirror/state";
 import type { Range } from "@codemirror/state";
-import { createClient } from "@/lib/supabase";
+import { supabase } from "@/lib/supabase";
 import {
   setupCollabChannel,
   type CursorPosition,
@@ -325,8 +325,6 @@ export function CollabEditorClient({
   const lastCursorRef = useRef<CursorPosition>(null);
   const editorViewRef = useRef<EditorView | null>(null);
   const cursorTimeoutsRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
-  const supabase = createClient();
-
   const typingEmails = new Set(otherCursors.map((c) => c.userEmail));
 
   useEffect(() => {

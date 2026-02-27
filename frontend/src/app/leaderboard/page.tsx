@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase";
+import { supabase } from "@/lib/supabase";
 import { getLeaderboard, type LeaderboardRow, type LeaderboardResponse } from "@/lib/api";
 import { Sidebar } from "@/components/Sidebar";
 import { UserMenu } from "@/components/UserMenu";
@@ -86,7 +86,6 @@ export default function LeaderboardPage() {
   const [error, setError] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
-    const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
       router.replace("/login");

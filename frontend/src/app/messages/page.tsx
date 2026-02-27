@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase";
+import { supabase } from "@/lib/supabase";
 import { Sidebar } from "@/components/Sidebar";
 import { UserMenu } from "@/components/UserMenu";
 
@@ -58,8 +58,6 @@ export default function MessagesPage() {
   const [showNew, setShowNew] = useState(false);
   const [sending, setSending] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
-  const supabase = createClient();
-
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
       if (!data.user) { router.replace("/login"); return; }

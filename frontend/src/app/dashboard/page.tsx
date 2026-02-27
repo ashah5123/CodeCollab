@@ -8,7 +8,7 @@ import { basicDark } from "@uiw/codemirror-theme-basic";
 import { javascript } from "@codemirror/lang-javascript";
 import { python } from "@codemirror/lang-python";
 import { EditorView } from "@codemirror/view";
-import { createClient } from "@/lib/supabase";
+import { supabase } from "@/lib/supabase";
 import {
   listCollabRooms,
   listSubmissions,
@@ -120,7 +120,6 @@ export default function DashboardPage() {
   const weekActivity = [3, 5, 2, 8, 4, 1, 6];
 
   const fetchData = useCallback(async () => {
-    const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { router.replace("/login"); return; }
     setEmail(user.email ?? "");

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase";
+import { supabase } from "@/lib/supabase";
 
 type NavItem = {
   href: string;
@@ -54,14 +54,12 @@ export function Sidebar() {
   const [userId, setUserId] = useState<string | null>(null);
 
   useEffect(() => {
-    const supabase = createClient();
     supabase.auth.getUser().then(({ data }) => {
       if (data.user) setUserId(data.user.id);
     });
   }, []);
 
   async function handleSignOut() {
-    const supabase = createClient();
     await supabase.auth.signOut();
     router.push("/");
     router.refresh();

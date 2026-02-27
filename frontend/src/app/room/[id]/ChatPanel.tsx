@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { createClient } from "@/lib/supabase";
+import { supabase } from "@/lib/supabase";
 import { User } from "@supabase/supabase-js";
 
 type ChatMessage = {
@@ -18,7 +18,6 @@ type ChatPanelProps = {
 };
 
 export function ChatPanel({ roomId, user }: ChatPanelProps) {
-  const supabase = createClient();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);

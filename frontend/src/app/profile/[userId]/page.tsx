@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { createClient } from "@/lib/supabase";
+import { supabase } from "@/lib/supabase";
 import { Sidebar } from "@/components/Sidebar";
 
 type SubmissionRow = {
@@ -61,8 +61,6 @@ export default function ProfilePage() {
   const [notFound, setNotFound]   = useState(false);
 
   const fetchData = useCallback(async () => {
-    const supabase = createClient();
-
     // ── 1. Auth guard ────────────────────────────────────────────────────────
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { router.replace("/login"); return; }

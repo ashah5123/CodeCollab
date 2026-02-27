@@ -1,5 +1,5 @@
 import type { RealtimeChannel } from "@supabase/supabase-js";
-import { createClient } from "@/lib/supabase";
+import { supabase } from "@/lib/supabase";
 
 const CHANNEL_PREFIX = "collab-room:";
 
@@ -54,7 +54,6 @@ export function broadcastCodeChange(
   userColor: string,
   cursorPosition: CursorPosition
 ): void {
-  const supabase = createClient();
   const channel = supabase.channel(getChannelName(roomId));
   channel.send({
     type: "broadcast",
@@ -76,7 +75,6 @@ export function subscribeToCodeChanges(
   roomId: string,
   onUpdate: (payload: CodeChangePayload) => void
 ): () => void {
-  const supabase = createClient();
   const channel = supabase.channel(getChannelName(roomId));
   channel.on("broadcast", { event: "code" }, ({ payload }) => {
     onUpdate(payload as CodeChangePayload);
@@ -95,7 +93,6 @@ export function broadcastCursor(
   userColor: string,
   cursorPosition: CursorPosition
 ): void {
-  const supabase = createClient();
   const channel = supabase.channel(getChannelName(roomId));
   channel.send({
     type: "broadcast",
@@ -115,7 +112,6 @@ export function subscribeToCursors(
   roomId: string,
   onUpdate: (payload: CursorPayload) => void
 ): () => void {
-  const supabase = createClient();
   const channel = supabase.channel(getChannelName(roomId));
   channel.on("broadcast", { event: "cursor" }, ({ payload }) => {
     onUpdate(payload as CursorPayload);
@@ -133,7 +129,6 @@ export function joinRoomPresence(
   userEmail: string,
   userColor: string
 ): () => void {
-  const supabase = createClient();
   const channel = supabase.channel(getChannelName(roomId));
   channel.track({
     user_email: userEmail,
@@ -153,7 +148,6 @@ export function subscribeToRoomPresence(
   roomId: string,
   onSync: (state: RoomPresenceState) => void
 ): () => void {
-  const supabase = createClient();
   const channel = supabase.channel(getChannelName(roomId));
   channel.on("presence", { event: "sync" }, () => {
     const state = channel.presenceState();
@@ -181,7 +175,6 @@ export function broadcastRoomChat(
   userEmail: string,
   message: string
 ): void {
-  const supabase = createClient();
   const channel = supabase.channel(getChannelName(roomId));
   channel.send({
     type: "broadcast",
@@ -201,7 +194,6 @@ export function subscribeToRoomChat(
   roomId: string,
   onMessage: (msg: RoomChatMessage) => void
 ): () => void {
-  const supabase = createClient();
   const channel = supabase.channel(getChannelName(roomId));
   channel.on("broadcast", { event: "chat" }, ({ payload }) => {
     onMessage(payload as RoomChatMessage);
@@ -251,7 +243,6 @@ export function setupCollabChannel(
   roomId: string,
   callbacks: CollabChannelCallbacks
 ): CollabChannelActions {
-  const supabase = createClient();
   const channel: RealtimeChannel = supabase.channel(getChannelName(roomId));
 
   channel

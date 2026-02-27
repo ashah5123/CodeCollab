@@ -9,7 +9,7 @@ import { javascript } from "@codemirror/lang-javascript";
 import { python } from "@codemirror/lang-python";
 import { json } from "@codemirror/lang-json";
 import { EditorView } from "@codemirror/view";
-import { createClient } from "@/lib/supabase";
+import { supabase } from "@/lib/supabase";
 import {
   getSubmission,
   listReviewComments,
@@ -53,7 +53,6 @@ export default function ReviewPage() {
   const commentsEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const supabase = createClient();
     supabase.auth.getUser().then(({ data }) => {
       if (!data.user) { router.replace("/login"); return; }
       setUserId(data.user.id);

@@ -2,14 +2,12 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase";
+import { supabase } from "@/lib/supabase";
 import { createRoom } from "@/lib/api";
 
 export function CreateRoomButton() {
   const [loading, setLoading] = useState(false);
   const router = useRouter();
-  const supabase = createClient();
-
   async function handleCreate() {
     setLoading(true);
     try {
