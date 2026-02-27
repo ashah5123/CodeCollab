@@ -138,6 +138,8 @@ export default function ReviewPage() {
     if (!params.id) return;
     setLoading(true);
     try {
+      // Use allSettled so that secondary calls (votes, attachments) failing
+      // does NOT prevent the submission itself from loading.
       const [subResult, cmtsResult, vtsResult, attsResult] = await Promise.allSettled([
         getSubmission(params.id),
         listReviewComments(params.id),
