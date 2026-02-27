@@ -92,15 +92,8 @@ export default function LeaderboardPage() {
       return;
     }
 
-    const { data: { session } } = await supabase.auth.getSession();
-    const token = session?.access_token;
-    if (!token) {
-      router.replace("/login");
-      return;
-    }
-
     try {
-      const res = await getLeaderboard(token);
+      const res = await getLeaderboard();
       setData(res);
       setError(null);
     } catch {

@@ -40,7 +40,6 @@ const ROLE_STYLES: Record<string, string> = {
 export default function OrgPage() {
   const router = useRouter();
   const [me, setMe] = useState<{ id: string; email: string } | null>(null);
-  const [token, setToken] = useState<string | null>(null);
   const [org, setOrg] = useState<Organisation | null>(null);
   const [members, setMembers] = useState<OrgMember[]>([]);
   const [chatMessages, setChatMessages] = useState<OrgChatMessage[]>([]);
@@ -59,13 +58,13 @@ export default function OrgPage() {
 
   const isCreatorOrAdmin = org?.created_by === me?.id || org?.role === "owner" || org?.role === "admin";
 
-  const fetchAll = useCallback(async (tok: string) => {
-    const orgData = await getMyOrg(tok);
+  const fetchAll = useCallback(async () => {
+    const orgData = await getMyOrg();
     setOrg(orgData);
     if (orgData) {
       const [mems, msgs] = await Promise.allSettled([
-        getOrgMembers(tok, orgData.id),
-        getOrgChatMessages(tok, orgData.id),
+        getOrgMembers(orgData.id),
+        getOrgChatMessages(orgData.id),
       ]);
       if (mems.status === "fulfilled") setMembers(mems.value);
       if (msgs.status === "fulfilled") setChatMessages(msgs.value);
@@ -80,7 +79,7 @@ export default function OrgPage() {
     });
     supabase.auth.getSession().then(({ data }) => {
       const tok = data.session?.access_token;
-      if (tok) { setToken(tok); fetchAll(tok); }
+      if (tok) { fetchAll(); }
       else setLoading(false);
     });
   }, [router, fetchAll]);
@@ -92,10 +91,10 @@ export default function OrgPage() {
   const handleSendChat = async (e: React.FormEvent) => {
     e.preventDefault();
     const text = chatInput.trim();
-    if (!text || !token || !org) return;
+    if (!text || !org) return;
     setSending(true);
     try {
-      const msg = await sendOrgChatMessage(token, org.id, text, me?.email);
+      const msg = await sendOrgChatMessage(org.id, text, me?.email);
       setChatMessages((prev) => [...prev, msg]);
       setChatInput("");
     } finally {
@@ -105,14 +104,14 @@ export default function OrgPage() {
 
   const handleCreateOrg = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!token || !orgName.trim()) return;
+    if (!orgName.trim()) return;
     setActionLoading(true);
     setError(null);
     try {
-      await createOrg(token, orgName.trim());
+      await createOrg(orgName.trim());
       setOrgName("");
       router.refresh();
-      await fetchAll(token);
+      await fetchAll();
     } catch (err) {
       setError((err as Error).message || "Failed to create organisation.");
     } finally {
@@ -122,14 +121,14 @@ export default function OrgPage() {
 
   const handleJoinOrg = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!token || !inviteCode.trim()) return;
+    if (!inviteCode.trim()) return;
     setActionLoading(true);
     setError(null);
     try {
-      await joinOrg(token, inviteCode.trim());
+      await joinOrg(inviteCode.trim());
       setInviteCode("");
       router.refresh();
-      await fetchAll(token);
+      await fetchAll();
     } catch (err) {
       setError((err as Error).message || "Invalid invite code.");
     } finally {
@@ -145,11 +144,11 @@ export default function OrgPage() {
   };
 
   const handleLeaveOrg = async () => {
-    if (!token || !org) return;
+    if (!org) return;
     setLeaveLoading(true);
     setError(null);
     try {
-      await leaveOrg(token, org.id);
+      await leaveOrg(org.id);
       setLeaveConfirmOpen(false);
       setOrg(null);
       router.push("/org");

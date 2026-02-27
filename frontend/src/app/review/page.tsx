@@ -35,12 +35,8 @@ export default function ReviewListPage() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { router.replace("/login"); return; }
 
-    const { data: { session } } = await supabase.auth.getSession();
-    const token = session?.access_token;
-    if (!token) { router.replace("/login"); return; }
-
     try {
-      const subs = await listSubmissions(token);
+      const subs = await listSubmissions();
       setSubmissions(subs);
     } catch (e) {
       setError((e as Error).message);

@@ -44,11 +44,8 @@ export default function CollabRoomsPage() {
   }, [router]);
 
   const fetchRooms = useCallback(async () => {
-    const session = await supabase.auth.getSession();
-    const token = session.data.session?.access_token;
-    if (!token) return;
     try {
-      const list = await listCollabRooms(token);
+      const list = await listCollabRooms();
       setRooms(list);
     } catch (e) {
       console.error(e);
@@ -87,13 +84,7 @@ export default function CollabRoomsPage() {
     setCreateError(null);
     setCreateLoading(true);
     try {
-      const session = await supabase.auth.getSession();
-      const token = session.data.session?.access_token;
-      if (!token) {
-        setCreateError("You must be logged in to create a room.");
-        return;
-      }
-      const room = await createCollabRoom(token, {
+      const room = await createCollabRoom({
         name: createName.trim(),
         description: createDescription.trim(),
         language: createLanguage,

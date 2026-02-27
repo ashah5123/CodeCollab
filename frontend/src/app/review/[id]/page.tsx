@@ -39,7 +39,6 @@ const STATUS_STYLES: Record<string, string> = {
 export default function ReviewPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
-  const [token, setToken] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [submission, setSubmission] = useState<Submission | null>(null);
@@ -58,18 +57,15 @@ export default function ReviewPage() {
       setUserId(data.user.id);
       setUserEmail(data.user.email ?? null);
     });
-    supabase.auth.getSession().then(({ data }) => {
-      setToken(data.session?.access_token ?? null);
-    });
   }, [router]);
 
   const fetchAll = useCallback(async () => {
-    if (!token || !params.id) return;
+    if (!params.id) return;
     setLoading(true);
     try {
       const [sub, cmts] = await Promise.all([
-        getSubmission(token, params.id),
-        listReviewComments(token, params.id),
+        getSubmission(params.id),
+        listReviewComments(params.id),
       ]);
       setSubmission(sub);
       setComments(cmts);
@@ -78,7 +74,7 @@ export default function ReviewPage() {
     } finally {
       setLoading(false);
     }
-  }, [token, params.id]);
+  }, [params.id]);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
   useEffect(() => {
@@ -87,11 +83,11 @@ export default function ReviewPage() {
 
   const handleAddComment = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!token || !commentBody.trim()) return;
+    if (!commentBody.trim()) return;
     setSubmitting(true);
     try {
       const line = commentLine ? parseInt(commentLine, 10) : undefined;
-      const c = await addReviewComment(token, params.id, commentBody.trim(), line);
+      const c = await addReviewComment(params.id, commentBody.trim(), line);
       setComments((prev) => [...prev, c]);
       setCommentBody("");
       setCommentLine("");
@@ -101,10 +97,9 @@ export default function ReviewPage() {
   };
 
   const handleApprove = async () => {
-    if (!token) return;
     setSubmitting(true);
     try {
-      const updated = await approveSubmission(token, params.id, feedback || undefined);
+      const updated = await approveSubmission(params.id, feedback || undefined);
       setSubmission(updated);
     } finally {
       setSubmitting(false);
@@ -112,10 +107,9 @@ export default function ReviewPage() {
   };
 
   const handleReject = async () => {
-    if (!token) return;
     setSubmitting(true);
     try {
-      const updated = await rejectSubmission(token, params.id, feedback || undefined);
+      const updated = await rejectSubmission(params.id, feedback || undefined);
       setSubmission(updated);
     } finally {
       setSubmitting(false);

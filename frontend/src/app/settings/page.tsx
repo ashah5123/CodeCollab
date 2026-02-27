@@ -10,7 +10,6 @@ type Section = "profile" | "account" | "notifications";
 
 export default function SettingsPage() {
   const router = useRouter();
-  const [token, setToken] = useState<string | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [displayName, setDisplayName] = useState("");
   const [bio, setBio] = useState("");
@@ -27,9 +26,9 @@ export default function SettingsPage() {
   const [notifReview, setNotifReview] = useState(true);
   const [notifChat, setNotifChat] = useState(false);
 
-  const fetchProfile = useCallback(async (tok: string) => {
+  const fetchProfile = useCallback(async () => {
     try {
-      const p = await getProfile(tok);
+      const p = await getProfile();
       setProfile(p);
       setDisplayName(p.display_name ?? "");
       setBio(p.bio ?? "");
@@ -47,17 +46,16 @@ export default function SettingsPage() {
     });
     supabase.auth.getSession().then(({ data }) => {
       const tok = data.session?.access_token;
-      if (tok) { setToken(tok); fetchProfile(tok); }
+      if (tok) { fetchProfile(); }
       else setLoading(false);
     });
   }, [router, fetchProfile]);
 
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!token) return;
     setSaving(true);
     try {
-      const updated = await updateProfile(token, {
+      const updated = await updateProfile({
         display_name: displayName || undefined,
         bio: bio || undefined,
       });

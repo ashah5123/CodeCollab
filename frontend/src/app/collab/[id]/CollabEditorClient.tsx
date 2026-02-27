@@ -16,7 +16,6 @@ import {
 import type { DecorationSet, ViewUpdate } from "@codemirror/view";
 import { StateField, StateEffect } from "@codemirror/state";
 import type { Range } from "@codemirror/state";
-import { supabase } from "@/lib/supabase";
 import {
   setupCollabChannel,
   type CursorPosition,
@@ -475,18 +474,15 @@ export function CollabEditorClient({
   );
 
   const handleSaveSnapshot = useCallback(async () => {
-    const token = (await supabase.auth.getSession()).data.session?.access_token;
-    if (!token) return;
-    await saveCollabRoomCode(token, roomId, code);
+    await saveCollabRoomCode(roomId, code);
     setSavedToast(true);
     setTimeout(() => setSavedToast(false), 2000);
-  }, [roomId, code, supabase.auth]);
+  }, [roomId, code]);
 
   const handleSubmitToReview = useCallback(async () => {
-    const token = (await supabase.auth.getSession()).data.session?.access_token;
-    if (token) await saveCollabRoomCode(token, roomId, code);
+    await saveCollabRoomCode(roomId, code);
     window.location.href = "/dashboard";
-  }, [roomId, code, supabase.auth]);
+  }, [roomId, code]);
 
   const sendChat = (e: React.FormEvent) => {
     e.preventDefault();

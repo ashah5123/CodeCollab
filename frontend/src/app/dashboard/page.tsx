@@ -102,7 +102,6 @@ function MiniBarChart({ data }: { data: number[] }) {
 export default function DashboardPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
-  const [token, setToken] = useState<string | null>(null);
   const [rooms, setRooms] = useState<CollabRoomResponse[]>([]);
   const [submissions, setSubmissions] = useState<Submission[]>([]);
   const [myRank, setMyRank] = useState<LeaderboardEntry | null>(null);
@@ -124,15 +123,10 @@ export default function DashboardPage() {
     if (!user) { router.replace("/login"); return; }
     setEmail(user.email ?? "");
 
-    const { data: { session } } = await supabase.auth.getSession();
-    const tok = session?.access_token;
-    if (!tok) { router.replace("/login"); return; }
-    setToken(tok);
-
     const [roomsData, subsData, rankData] = await Promise.allSettled([
-      listCollabRooms(tok),
-      listSubmissions(tok),
-      getMyRank(tok),
+      listCollabRooms(),
+      listSubmissions(),
+      getMyRank(),
     ]);
 
     if (roomsData.status === "fulfilled") setRooms(roomsData.value);
@@ -154,11 +148,11 @@ export default function DashboardPage() {
 
   const handleModalSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!token || !modalTitle.trim() || !modalCode.trim()) return;
+    if (!modalTitle.trim() || !modalCode.trim()) return;
     setModalSubmitting(true);
     setModalError(null);
     try {
-      const result = await createSubmission(token, {
+      const result = await createSubmission({
         title: modalTitle.trim(),
         language: modalLang,
         code: modalCode,

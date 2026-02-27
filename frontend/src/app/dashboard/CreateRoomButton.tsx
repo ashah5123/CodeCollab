@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabase";
 import { createRoom } from "@/lib/api";
 
 export function CreateRoomButton() {
@@ -11,13 +10,7 @@ export function CreateRoomButton() {
   async function handleCreate() {
     setLoading(true);
     try {
-      const session = await supabase.auth.getSession();
-      const token = session.data.session?.access_token;
-      if (!token) {
-        router.push("/login");
-        return;
-      }
-      const room = await createRoom(token, "Untitled Room");
+      const room = await createRoom("Untitled Room");
       router.push(`/room/${room.id}`);
       router.refresh();
     } catch (e) {
