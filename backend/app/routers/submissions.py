@@ -77,7 +77,7 @@ def create_submission(
                     "code": body.code,
                     "language": body.language,
                     "problem_description": body.description,
-                    "status": "pending",
+                    "status": "open",
                 }
             )
             .execute()
