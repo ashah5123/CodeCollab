@@ -40,6 +40,11 @@ class SearchQuery(BaseModel):
     q: str = Field(min_length=1, max_length=200)
 
 
+class GenerateMeta(BaseModel):
+    code: str = Field(min_length=1)
+    language: str = Field(default="python", max_length=50)
+
+
 def _notify_mentions(comment_body: str, submission_id: str, from_email: str) -> None:
     """Parse @email mentions and silently create in-app notifications for each mentioned user."""
     try:
@@ -200,6 +205,79 @@ def search_submissions(
             sub["match_snippet"] = None
 
     return results
+
+
+@router.post("/generate-meta")
+def generate_submission_meta(
+    body: GenerateMeta,
+    user: JWTPayload = Depends(get_current_user),
+):
+    """Use Groq to generate a title and description from pasted code."""
+    if not settings.groq_api_key:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="AI features are not configured (missing GROQ_API_KEY).",
+        )
+
+    try:
+        from groq import Groq
+    except ImportError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="groq SDK is not installed on this server.",
+        ) from exc
+
+    snippet = body.code[:3000]  # cap to keep prompt small
+    prompt = (
+        f"You are a code review assistant. Analyze this {body.language} code snippet and respond "
+        f"with ONLY a JSON object — no markdown, no explanation, no code fences.\n\n"
+        f"Required JSON format:\n"
+        f'{{\"title\": \"<concise title, max 60 chars>\", '
+        f'\"description\": \"<1-2 sentences explaining what the code does and what to review, max 200 chars>\"}}\n\n'
+        f"Code:\n```{body.language}\n{snippet}\n```"
+    )
+
+    try:
+        client = Groq(api_key=settings.groq_api_key)
+        completion = client.chat.completions.create(
+            model="llama3-8b-8192",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=200,
+            temperature=0.2,
+        )
+    except Exception as exc:
+        logger.error("generate_meta: Groq call failed: %s", exc, exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Generation failed: {exc}",
+        ) from exc
+
+    import json, re as _re
+
+    raw = (completion.choices[0].message.content or "").strip()
+
+    # Strip code fences if the model wrapped the JSON
+    raw = _re.sub(r"^```[a-zA-Z]*\n?", "", raw).strip()
+    raw = _re.sub(r"\n?```$", "", raw).strip()
+
+    # Isolate the first {...} block in case of surrounding text
+    m = _re.search(r"\{.*\}", raw, _re.DOTALL)
+    if m:
+        raw = m.group(0)
+
+    try:
+        data = json.loads(raw)
+    except Exception as exc:
+        logger.error("generate_meta: JSON parse failed — raw=%r", raw)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="AI returned an unexpected format. Please try again.",
+        ) from exc
+
+    return {
+        "title":       str(data.get("title", "")).strip()[:255],
+        "description": str(data.get("description", "")).strip()[:2000],
+    }
 
 
 @router.get("/{submission_id}")

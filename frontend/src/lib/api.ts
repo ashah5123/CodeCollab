@@ -489,6 +489,16 @@ export async function searchSubmissions(q: string): Promise<SearchResult[]> {
   });
 }
 
+export async function generateSubmissionMeta(
+  code: string,
+  language: string
+): Promise<{ title: string; description: string }> {
+  return fetchWithAuth("/api/v1/submissions/generate-meta", {
+    method: "POST",
+    body: JSON.stringify({ code, language }),
+  });
+}
+
 export async function sendOrgChatMessage(
   orgId: string,
   body: string,
