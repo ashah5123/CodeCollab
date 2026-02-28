@@ -473,6 +473,10 @@ export async function requestAiReview(submissionId: string): Promise<{ review: s
   return fetchWithAuth(`/api/v1/submissions/${submissionId}/ai-review`, { method: "POST" });
 }
 
+export async function summarizeDiscussion(submissionId: string): Promise<{ summary: string }> {
+  return fetchWithAuth(`/api/v1/submissions/${submissionId}/summarize`, { method: "POST" });
+}
+
 export async function sendOrgChatMessage(
   orgId: string,
   body: string,

@@ -495,3 +495,89 @@ Be direct and specific. Refer to line content, not line numbers."""
 
     review_text = completion.choices[0].message.content or ""
     return {"review": review_text}
+
+
+# ─── Summarize Discussion ─────────────────────────────────────────────────────
+
+@router.post("/{submission_id}/summarize")
+def summarize_discussion(
+    submission_id: str,
+    user: JWTPayload = Depends(get_current_user),
+):
+    """Call Groq to produce a concise summary of the comment discussion."""
+    if not settings.groq_api_key:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="AI features are not configured on this server (missing GROQ_API_KEY).",
+        )
+
+    submission = _get_submission_or_404(submission_id)
+
+    comments_row = (
+        supabase_admin.table("comments")
+        .select("user_email, body, created_at")
+        .eq("submission_id", submission_id)
+        .order("created_at", desc=False)
+        .execute()
+    )
+    comments = comments_row.data or []
+
+    if not comments:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No comments to summarize.",
+        )
+
+    try:
+        from groq import Groq
+    except ImportError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="groq SDK is not installed on this server.",
+        ) from exc
+
+    title    = submission.get("title", "Untitled")
+    language = submission.get("language", "code")
+    comments_text = "\n\n".join(
+        f"[{c.get('user_email', 'unknown')}]: {c.get('body', '')}"
+        for c in comments
+    )
+
+    prompt = f"""You are summarizing a peer code review discussion thread.
+
+Submission title: {title}
+Language: {language}
+Number of comments: {len(comments)}
+
+--- Discussion ---
+{comments_text}
+---
+
+Please write a concise summary (3–5 sentences) covering:
+- The main issues or concerns raised by reviewers
+- Any consensus or agreement reached
+- Key suggestions or action items
+- The overall tone/sentiment of the discussion
+
+Be direct and specific. Do not repeat comments verbatim."""
+
+    try:
+        client = Groq(api_key=settings.groq_api_key)
+        completion = client.chat.completions.create(
+            model="llama3-8b-8192",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=512,
+            temperature=0.3,
+        )
+    except Exception as exc:
+        logger.error(
+            "summarize_discussion: Groq API call failed for submission=%s: %s",
+            submission_id, exc, exc_info=True,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Summarization failed: {exc}",
+        ) from exc
+
+    summary_text = completion.choices[0].message.content or ""
+    return {"summary": summary_text}
