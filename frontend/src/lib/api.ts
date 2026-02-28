@@ -477,6 +477,18 @@ export async function summarizeDiscussion(submissionId: string): Promise<{ summa
   return fetchWithAuth(`/api/v1/submissions/${submissionId}/summarize`, { method: "POST" });
 }
 
+export type SearchResult = Submission & {
+  match_field: "title" | "description" | "code" | null;
+  match_snippet: string | null;
+};
+
+export async function searchSubmissions(q: string): Promise<SearchResult[]> {
+  return fetchWithAuth("/api/v1/submissions/search", {
+    method: "POST",
+    body: JSON.stringify({ q }),
+  });
+}
+
 export async function sendOrgChatMessage(
   orgId: string,
   body: string,

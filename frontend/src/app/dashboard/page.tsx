@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import CodeMirror from "@uiw/react-codemirror";
@@ -14,8 +14,10 @@ import {
   listSubmissions,
   getMyRank,
   createSubmission,
+  searchSubmissions,
   type CollabRoomResponse,
   type Submission,
+  type SearchResult,
   type LeaderboardEntry,
 } from "@/lib/api";
 import { Sidebar } from "@/components/Sidebar";
@@ -265,6 +267,88 @@ function SubmissionCard({ sub }: { sub: Submission }) {
   );
 }
 
+// ─── Highlight helper ─────────────────────────────────────────────────────────
+
+function Highlight({ text, query }: { text: string; query: string }) {
+  if (!query.trim()) return <>{text}</>;
+  const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const parts = text.split(new RegExp(`(${escaped})`, "gi"));
+  return (
+    <>
+      {parts.map((part, i) =>
+        part.toLowerCase() === query.toLowerCase() ? (
+          <mark key={i} className="bg-amber-400/25 text-amber-200 rounded-sm px-0.5 not-italic">{part}</mark>
+        ) : (
+          <span key={i}>{part}</span>
+        )
+      )}
+    </>
+  );
+}
+
+// ─── Search result card ───────────────────────────────────────────────────────
+
+const MATCH_FIELD_LABEL: Record<string, string> = {
+  description: "desc",
+  code: "code",
+};
+
+function SearchResultCard({ sub, query }: { sub: SearchResult; query: string }) {
+  const glow = STATUS_GLOW[sub.status] ?? "from-zinc-500/30";
+  const lang = LANG_META[sub.language] ?? { color: "text-zinc-400", bg: "bg-zinc-500/10" };
+
+  return (
+    <motion.div variants={fadeUp}>
+      <Link
+        href={`/review/${sub.id}`}
+        className="group relative flex items-start gap-3 rounded-xl border border-border bg-surface-muted/20 px-4 py-3 overflow-hidden transition-colors hover:border-white/10"
+      >
+        <div className={`absolute inset-y-0 left-0 w-1 bg-gradient-to-b ${glow} to-transparent`} />
+        <div className="absolute inset-0 bg-gradient-to-r from-white/[0.02] to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none" />
+
+        <div className="relative flex-1 min-w-0 pl-2 space-y-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-sm font-medium text-white truncate">
+              {sub.match_field === "title" && sub.match_snippet
+                ? <Highlight text={sub.match_snippet} query={query} />
+                : sub.title}
+            </span>
+            <span className={`text-[10px] font-medium rounded-full border px-2 py-0.5 ${STATUS_STYLES[sub.status] ?? STATUS_STYLES.pending}`}>
+              {sub.status}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className={`text-xs font-mono rounded px-1.5 py-0.5 ${lang.bg} ${lang.color}`}>
+              {sub.language}
+            </span>
+            <span className="text-xs text-zinc-600">
+              {new Date(sub.created_at).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
+            </span>
+          </div>
+
+          {sub.match_field && sub.match_field !== "title" && sub.match_snippet && (
+            <div className="flex items-start gap-1.5 pt-0.5">
+              <span className="text-[10px] font-mono text-zinc-600 shrink-0 mt-px">
+                {MATCH_FIELD_LABEL[sub.match_field] ?? sub.match_field}:
+              </span>
+              <p className="text-[11px] text-zinc-500 font-mono leading-relaxed break-all">
+                <Highlight text={sub.match_snippet} query={query} />
+              </p>
+            </div>
+          )}
+        </div>
+
+        <div className="relative shrink-0 self-center text-zinc-700 group-hover:text-zinc-400 transition-colors ml-1">
+          <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+          </svg>
+        </div>
+      </Link>
+    </motion.div>
+  );
+}
+
 // ─── Empty state ──────────────────────────────────────────────────────────────
 
 function EmptySubmissions({ onNew }: { onNew: () => void }) {
@@ -404,6 +488,30 @@ export default function DashboardPage() {
   const [modalSubmitting, setModalSubmitting] = useState(false);
   const [modalError, setModalError] = useState<string | null>(null);
 
+  // Search state
+  const [searchQuery,   setSearchQuery]   = useState("");
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    const q = searchQuery.trim();
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    if (!q) { setSearchResults([]); setSearchLoading(false); return; }
+    setSearchLoading(true);
+    searchTimerRef.current = setTimeout(async () => {
+      try {
+        const results = await searchSubmissions(q);
+        setSearchResults(results);
+      } catch {
+        setSearchResults([]);
+      } finally {
+        setSearchLoading(false);
+      }
+    }, 300);
+    return () => { if (searchTimerRef.current) clearTimeout(searchTimerRef.current); };
+  }, [searchQuery]);
+
   const weekActivity = [3, 5, 2, 8, 4, 1, 6];
 
   const fetchData = useCallback(async () => {
@@ -465,9 +573,42 @@ export default function DashboardPage() {
       <div className="flex-1 flex flex-col overflow-hidden">
 
         {/* ── Header ── */}
-        <header className="shrink-0 border-b border-border bg-surface-muted/20 px-6 h-14 flex items-center justify-between">
-          <h1 className="font-semibold text-white">Dashboard</h1>
-          <div className="flex items-center gap-3">
+        <header className="shrink-0 border-b border-border bg-surface-muted/20 px-6 h-14 flex items-center gap-4">
+          <h1 className="font-semibold text-white shrink-0">Dashboard</h1>
+
+          {/* Search bar */}
+          <div className="relative flex-1 max-w-sm">
+            <div className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500">
+              {searchLoading ? (
+                <div className="h-4 w-4 rounded-full border border-zinc-500 border-t-transparent animate-spin" />
+              ) : (
+                <SearchIcon className="h-4 w-4" />
+              )}
+            </div>
+            <input
+              type="search"
+              placeholder="Search submissions…"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full rounded-lg border border-border bg-surface-muted/30 pl-9 pr-8 py-1.5 text-sm text-white placeholder:text-zinc-600 focus:border-[hsl(var(--accent))] focus:outline-none transition-colors"
+            />
+            <AnimatePresence>
+              {searchQuery && (
+                <motion.button
+                  initial={{ opacity: 0, scale: 0.8 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.8 }}
+                  transition={{ duration: 0.1 }}
+                  onClick={() => setSearchQuery("")}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-600 hover:text-zinc-300 transition-colors"
+                >
+                  <XIcon className="h-3.5 w-3.5" />
+                </motion.button>
+              )}
+            </AnimatePresence>
+          </div>
+
+          <div className="ml-auto flex items-center gap-3">
             <motion.button
               onClick={openModal}
               whileHover={{ scale: 1.03 }}
@@ -538,33 +679,96 @@ export default function DashboardPage() {
             {/* Content grid */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
-              {/* ── Submissions ── */}
+              {/* ── Submissions / Search Results ── */}
               <div className="lg:col-span-2 space-y-3">
-                <div className="flex items-center justify-between">
-                  <h2 className="text-sm font-semibold text-zinc-200">Recent Submissions</h2>
-                  <Link href="/review" className="text-xs text-accent hover:underline">
-                    View all →
-                  </Link>
-                </div>
+                <AnimatePresence mode="wait">
+                  {searchQuery.trim() ? (
+                    <motion.div
+                      key="search"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      transition={{ duration: 0.15 }}
+                      className="space-y-3"
+                    >
+                      <div className="flex items-center justify-between">
+                        <h2 className="text-sm font-semibold text-zinc-200">
+                          {searchLoading
+                            ? "Searching…"
+                            : `${searchResults.length} result${searchResults.length !== 1 ? "s" : ""} for "${searchQuery}"`}
+                        </h2>
+                        <button
+                          onClick={() => setSearchQuery("")}
+                          className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
+                        >
+                          Clear
+                        </button>
+                      </div>
 
-                {loading ? (
-                  <div className="space-y-2">
-                    {[0, 1, 2, 3].map((i) => <SubmissionSkeleton key={i} />)}
-                  </div>
-                ) : recentSubs.length === 0 ? (
-                  <EmptySubmissions onNew={openModal} />
-                ) : (
-                  <motion.div
-                    variants={staggerContainer}
-                    initial="hidden"
-                    animate="visible"
-                    className="space-y-2"
-                  >
-                    {recentSubs.map((sub) => (
-                      <SubmissionCard key={sub.id} sub={sub} />
-                    ))}
-                  </motion.div>
-                )}
+                      {searchLoading ? (
+                        <div className="space-y-2">
+                          {[0, 1, 2].map((i) => <SubmissionSkeleton key={i} />)}
+                        </div>
+                      ) : searchResults.length === 0 ? (
+                        <div className="rounded-xl border border-dashed border-border bg-surface-muted/10 px-6 py-10 text-center flex flex-col items-center gap-3">
+                          <SearchIcon className="h-8 w-8 text-zinc-700" />
+                          <div>
+                            <p className="text-sm font-medium text-zinc-400">No results found</p>
+                            <p className="text-xs text-zinc-600 mt-0.5">
+                              Try a different keyword or check your spelling
+                            </p>
+                          </div>
+                        </div>
+                      ) : (
+                        <motion.div
+                          variants={staggerContainer}
+                          initial="hidden"
+                          animate="visible"
+                          className="space-y-2"
+                        >
+                          {searchResults.map((sub) => (
+                            <SearchResultCard key={sub.id} sub={sub} query={searchQuery} />
+                          ))}
+                        </motion.div>
+                      )}
+                    </motion.div>
+                  ) : (
+                    <motion.div
+                      key="recent"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      transition={{ duration: 0.15 }}
+                      className="space-y-3"
+                    >
+                      <div className="flex items-center justify-between">
+                        <h2 className="text-sm font-semibold text-zinc-200">Recent Submissions</h2>
+                        <Link href="/review" className="text-xs text-accent hover:underline">
+                          View all →
+                        </Link>
+                      </div>
+
+                      {loading ? (
+                        <div className="space-y-2">
+                          {[0, 1, 2, 3].map((i) => <SubmissionSkeleton key={i} />)}
+                        </div>
+                      ) : recentSubs.length === 0 ? (
+                        <EmptySubmissions onNew={openModal} />
+                      ) : (
+                        <motion.div
+                          variants={staggerContainer}
+                          initial="hidden"
+                          animate="visible"
+                          className="space-y-2"
+                        >
+                          {recentSubs.map((sub) => (
+                            <SubmissionCard key={sub.id} sub={sub} />
+                          ))}
+                        </motion.div>
+                      )}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
 
               {/* ── Right column ── */}
@@ -810,6 +1014,13 @@ function XIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+    </svg>
+  );
+}
+function SearchIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
     </svg>
   );
 }

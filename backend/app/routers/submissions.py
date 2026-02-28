@@ -36,6 +36,10 @@ class ReviewDecision(BaseModel):
     feedback: str | None = Field(default=None, max_length=2000)
 
 
+class SearchQuery(BaseModel):
+    q: str = Field(min_length=1, max_length=200)
+
+
 def _notify_mentions(comment_body: str, submission_id: str, from_email: str) -> None:
     """Parse @email mentions and silently create in-app notifications for each mentioned user."""
     try:
@@ -143,6 +147,59 @@ def create_submission(
         )
     logger.info("create_submission: created submission id=%s for user=%s", row.data[0].get("id"), user.sub)
     return row.data[0]
+
+
+@router.post("/search")
+def search_submissions(
+    body: SearchQuery,
+    user: JWTPayload = Depends(get_current_user),
+):
+    """Search submissions by title, description and code using ilike (free, no FTS index required)."""
+    q = body.q.strip()
+    try:
+        rows = (
+            supabase_admin.table("submissions")
+            .select("id, user_id, user_email, title, language, status, problem_description, created_at, code")
+            .or_(f"title.ilike.%{q}%,problem_description.ilike.%{q}%,code.ilike.%{q}%")
+            .order("created_at", desc=True)
+            .limit(25)
+            .execute()
+        )
+    except Exception as exc:
+        logger.error("search_submissions: query=%r error=%s", q, exc, exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Search failed.",
+        ) from exc
+
+    results = rows.data or []
+    q_lower = q.lower()
+
+    for sub in results:
+        title = sub.get("title", "") or ""
+        desc  = sub.get("problem_description", "") or ""
+        code  = sub.get("code", "") or ""
+
+        if q_lower in title.lower():
+            sub["match_field"]   = "title"
+            sub["match_snippet"] = title
+        elif q_lower in desc.lower():
+            idx   = desc.lower().find(q_lower)
+            start = max(0, idx - 50)
+            end   = min(len(desc), idx + len(q) + 50)
+            sub["match_field"]   = "description"
+            sub["match_snippet"] = ("…" if start > 0 else "") + desc[start:end] + ("…" if end < len(desc) else "")
+        elif q_lower in code.lower():
+            idx   = code.lower().find(q_lower)
+            start = max(0, idx - 50)
+            end   = min(len(code), idx + len(q) + 50)
+            sub["match_field"]   = "code"
+            sub["match_snippet"] = ("…" if start > 0 else "") + code[start:end] + ("…" if end < len(code) else "")
+        else:
+            sub["match_field"]   = None
+            sub["match_snippet"] = None
+
+    return results
 
 
 @router.get("/{submission_id}")
