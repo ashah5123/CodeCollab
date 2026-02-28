@@ -27,6 +27,7 @@ import {
   uploadAttachment,
   deleteAttachment,
   changeSubmissionStatus,
+  requestAiReview,
   type Submission,
   type ReviewComment,
   type OrgMember,
@@ -448,6 +449,12 @@ export default function ReviewPage() {
   // Copy-to-clipboard state for code toolbar
   const [copied, setCopied] = useState(false);
 
+  // AI review state
+  const [rightTab,  setRightTab]  = useState<"comments" | "ai">("comments");
+  const [aiReview,  setAiReview]  = useState<string | null>(null);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError,   setAiError]   = useState<string | null>(null);
+
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
       if (!data.user) { router.replace("/login"); return; }
@@ -665,6 +672,21 @@ export default function ReviewPage() {
     await navigator.clipboard.writeText(submission.code);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleAiReview = async () => {
+    setRightTab("ai");
+    if (aiReview) return;          // already fetched — just switch tab
+    setAiLoading(true);
+    setAiError(null);
+    try {
+      const data = await requestAiReview(params.id);
+      setAiReview(data.review);
+    } catch (e) {
+      setAiError((e as Error).message || "AI review failed.");
+    } finally {
+      setAiLoading(false);
+    }
   };
 
   // ─── Derived ───────────────────────────────────────────────────────────────
@@ -940,6 +962,32 @@ export default function ReviewPage() {
               </div>
 
               <div className="flex items-center gap-2">
+                {/* AI Review button */}
+                <motion.button
+                  onClick={handleAiReview}
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  disabled={aiLoading}
+                  className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors border ${
+                    rightTab === "ai"
+                      ? "text-violet-400 border-violet-500/40 bg-violet-500/10"
+                      : "text-zinc-400 border-border hover:text-violet-300 hover:border-violet-500/40 hover:bg-violet-500/8 bg-surface-muted/20"
+                  } disabled:opacity-60`}
+                >
+                  {aiLoading ? (
+                    <>
+                      <div className="h-3.5 w-3.5 rounded-full border border-violet-400/50 border-t-transparent animate-spin" />
+                      Reviewing…
+                    </>
+                  ) : (
+                    <>
+                      <SparklesIcon className="h-3.5 w-3.5" />
+                      AI Review
+                    </>
+                  )}
+                </motion.button>
+
+                {/* Copy button */}
                 <motion.button
                   onClick={handleCopy}
                   whileHover={{ scale: 1.05 }}
@@ -985,19 +1033,48 @@ export default function ReviewPage() {
             transition={{ duration: 0.3, ease: "easeOut" as const, delay: 0.05 }}
             className="w-72 shrink-0 border-l border-border bg-surface-muted/10 flex flex-col"
           >
-            {/* Panel header */}
-            <div className="shrink-0 px-4 py-3 border-b border-border flex items-center justify-between">
-              <h3 className="text-xs font-semibold text-zinc-200 flex items-center gap-2">
-                <ChatIcon className="h-3.5 w-3.5 text-zinc-500" />
-                Comments
-                {comments.length > 0 && (
-                  <span className="text-[10px] font-medium text-zinc-500 bg-surface-muted rounded-full px-1.5 py-0.5">
-                    {comments.length}
+            {/* Panel header — tab toggle */}
+            <div className="shrink-0 px-3 py-2.5 border-b border-border">
+              <div className="flex items-center gap-0.5 bg-surface-muted/30 rounded-xl p-0.5">
+                <button
+                  onClick={() => setRightTab("comments")}
+                  className="relative flex-1 flex items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-medium transition-colors"
+                >
+                  {rightTab === "comments" && (
+                    <motion.div
+                      layoutId="right-tab-pill"
+                      className="absolute inset-0 rounded-lg bg-surface-muted border border-border shadow-sm"
+                      style={{ zIndex: 0 }}
+                    />
+                  )}
+                  <span className={`relative z-10 flex items-center gap-1.5 ${rightTab === "comments" ? "text-white" : "text-zinc-500 hover:text-zinc-300"}`}>
+                    <ChatIcon className="h-3 w-3" />
+                    Comments
+                    {comments.length > 0 && (
+                      <span className="text-[10px] text-zinc-500">{comments.length}</span>
+                    )}
                   </span>
-                )}
-              </h3>
+                </button>
+                <button
+                  onClick={() => setRightTab("ai")}
+                  className="relative flex-1 flex items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-medium transition-colors"
+                >
+                  {rightTab === "ai" && (
+                    <motion.div
+                      layoutId="right-tab-pill"
+                      className="absolute inset-0 rounded-lg bg-violet-500/10 border border-violet-500/20 shadow-sm"
+                      style={{ zIndex: 0 }}
+                    />
+                  )}
+                  <span className={`relative z-10 flex items-center gap-1.5 ${rightTab === "ai" ? "text-violet-300" : "text-zinc-500 hover:text-zinc-300"}`}>
+                    <SparklesIcon className="h-3 w-3" />
+                    AI Review
+                  </span>
+                </button>
+              </div>
             </div>
 
+            {rightTab === "comments" ? (<>
             {/* Comments list */}
             <div className="flex-1 overflow-y-auto p-3 space-y-2.5">
               {comments.length === 0 ? (
@@ -1106,6 +1183,75 @@ export default function ReviewPage() {
                 )}
               </motion.button>
             </form>
+            </>) : (
+            /* ── AI Review panel ── */
+            <motion.div
+              key="ai-panel"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.2 }}
+              className="flex-1 overflow-y-auto p-3"
+            >
+              {aiLoading ? (
+                <div className="space-y-4 pt-2">
+                  <div className="space-y-2">
+                    <div className="h-3 w-16 rounded skeleton" />
+                    <div className="h-2.5 rounded skeleton" />
+                    <div className="h-2.5 w-4/5 rounded skeleton" />
+                    <div className="h-2.5 w-3/5 rounded skeleton" />
+                  </div>
+                  <div className="space-y-2">
+                    <div className="h-3 w-16 rounded skeleton" />
+                    {[1, 2, 3].map((j) => (
+                      <div key={j} className="h-2.5 rounded skeleton" style={{ width: `${60 + j * 12}%` }} />
+                    ))}
+                  </div>
+                  <div className="space-y-2">
+                    <div className="h-3 w-20 rounded skeleton" />
+                    {[1, 2, 3, 4].map((j) => (
+                      <div key={j} className="h-2.5 rounded skeleton" style={{ width: `${55 + j * 10}%` }} />
+                    ))}
+                  </div>
+                  <div className="space-y-2">
+                    <div className="h-3 w-12 rounded skeleton" />
+                    <div className="h-2.5 w-2/5 rounded skeleton" />
+                  </div>
+                </div>
+              ) : aiError ? (
+                <div className="flex flex-col items-center gap-3 py-8 text-center">
+                  <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-red-500/10 border border-red-500/20">
+                    <svg className="w-5 h-5 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium text-zinc-400">Review failed</p>
+                    <p className="text-[11px] text-zinc-600 mt-1 leading-relaxed">{aiError}</p>
+                  </div>
+                  <button
+                    onClick={handleAiReview}
+                    className="text-xs text-[hsl(var(--accent))] hover:underline"
+                  >
+                    Try again
+                  </button>
+                </div>
+              ) : aiReview ? (
+                <AiReviewPanel review={aiReview} />
+              ) : (
+                <div className="flex flex-col items-center gap-3 py-8 text-center">
+                  <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-violet-500/10 border border-violet-500/20">
+                    <SparklesIcon className="h-5 w-5 text-violet-400" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium text-zinc-300">AI Code Review</p>
+                    <p className="text-[11px] text-zinc-600 mt-1 leading-relaxed">
+                      Click <span className="text-violet-400 font-medium">AI Review</span> in the toolbar to get instant feedback.
+                    </p>
+                  </div>
+                </div>
+              )}
+            </motion.div>
+            )}
           </motion.aside>
         </div>
       </div>
@@ -1203,5 +1349,45 @@ function SendIcon({ className }: { className?: string }) {
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
     </svg>
+  );
+}
+
+function SparklesIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456zM16.894 20.567L16.5 21.75l-.394-1.183a2.25 2.25 0 00-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 001.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 001.423 1.423l1.183.394-1.183.394a2.25 2.25 0 00-1.423 1.423z" />
+    </svg>
+  );
+}
+
+// ─── AI Review panel ──────────────────────────────────────────────────────────
+
+function AiReviewPanel({ review }: { review: string }) {
+  const sectionMeta: Record<string, string> = {
+    Summary:     "text-sky-400",
+    Issues:      "text-red-400",
+    Suggestions: "text-emerald-400",
+    Score:       "text-violet-400",
+  };
+
+  const blocks = review.split(/^## /m).filter(Boolean);
+
+  return (
+    <div className="space-y-5">
+      {blocks.map((block, i) => {
+        const nl      = block.indexOf("\n");
+        const heading = (nl !== -1 ? block.slice(0, nl) : block).trim();
+        const body    = (nl !== -1 ? block.slice(nl + 1) : "").trim();
+        const color   = sectionMeta[heading] ?? "text-zinc-400";
+        return (
+          <div key={i} className="space-y-1.5">
+            <p className={`text-[11px] font-semibold uppercase tracking-wider ${color}`}>
+              {heading}
+            </p>
+            <p className="text-[11px] text-zinc-400 leading-relaxed whitespace-pre-wrap">{body}</p>
+          </div>
+        );
+      })}
+    </div>
   );
 }

@@ -467,6 +467,12 @@ export async function changeSubmissionStatus(
   });
 }
 
+// ─── AI Review ─────────────────────────────────────────────────────────────────
+
+export async function requestAiReview(submissionId: string): Promise<{ review: string }> {
+  return fetchWithAuth(`/api/v1/submissions/${submissionId}/ai-review`, { method: "POST" });
+}
+
 export async function sendOrgChatMessage(
   orgId: string,
   body: string,

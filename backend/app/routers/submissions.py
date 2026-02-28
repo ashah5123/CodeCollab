@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
 from app.auth import get_current_user, JWTPayload
+from app.config import settings
 from app.supabase_client import supabase_admin
 
 logger = logging.getLogger(__name__)
@@ -420,3 +421,77 @@ def delete_submission(
     _require_owner(submission, user)
     supabase_admin.table("submissions").delete().eq("id", submission_id).execute()
     return None
+
+
+# ─── AI Review ────────────────────────────────────────────────────────────────
+
+@router.post("/{submission_id}/ai-review")
+def ai_review_submission(
+    submission_id: str,
+    user: JWTPayload = Depends(get_current_user),
+):
+    """Call Groq (llama3-8b-8192) to review the submission code and return suggestions."""
+    if not settings.groq_api_key:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="AI review is not configured on this server (missing GROQ_API_KEY).",
+        )
+
+    submission = _get_submission_or_404(submission_id)
+
+    try:
+        from groq import Groq  # imported here to keep startup fast when key is absent
+    except ImportError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="groq SDK is not installed on this server.",
+        ) from exc
+
+    language = submission.get("language", "code")
+    title    = submission.get("title", "Untitled")
+    code     = submission.get("code", "")
+    desc     = submission.get("problem_description") or ""
+
+    prompt = f"""You are an expert {language} code reviewer. A developer has submitted the following code for peer review.
+
+Title: {title}
+Language: {language}{f'''
+Problem description: {desc}''' if desc else ""}
+
+```{language}
+{code}
+```
+
+Please provide a structured code review with the following sections:
+
+## Summary
+One or two sentences describing what the code does.
+
+## Issues
+List any bugs, logic errors, or incorrect behaviour you find. If none, say "No issues found."
+
+## Suggestions
+Concrete, actionable improvements for readability, performance, idiomatic style, error handling, or best practices. Number each suggestion.
+
+## Score
+Rate the code quality from 1–10 with a one-sentence justification.
+
+Be direct and specific. Refer to line content, not line numbers."""
+
+    try:
+        client = Groq(api_key=settings.groq_api_key)
+        completion = client.chat.completions.create(
+            model="llama3-8b-8192",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=1024,
+            temperature=0.3,
+        )
+    except Exception as exc:
+        logger.error("ai_review: Groq API call failed for submission=%s: %s", submission_id, exc, exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"AI review failed: {exc}",
+        ) from exc
+
+    review_text = completion.choices[0].message.content or ""
+    return {"review": review_text}

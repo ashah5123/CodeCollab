@@ -5,6 +5,7 @@ class Settings(BaseSettings):
     supabase_url: str = ""
     supabase_service_key: str = ""
     cors_origins: str = "http://localhost:3000"
+    groq_api_key: str = ""
 
     model_config = {"env_file": ".env", "extra": "ignore"}
 
