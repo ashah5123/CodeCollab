@@ -43,13 +43,11 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+_cors_origins = [o for o in settings.cors_origin_list if o]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "https://*.vercel.app",
-        os.getenv("FRONTEND_URL", ""),
-    ],
+    allow_origins=_cors_origins,
+    allow_origin_regex=r"https://.*\.(vercel\.app|netlify\.app|railway\.app)",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
