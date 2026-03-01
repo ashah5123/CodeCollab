@@ -122,10 +122,16 @@ export default function SettingsPage() {
   const [success, setSuccess]   = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
+  // Account — email change
+  const [newEmail, setNewEmail]       = useState("");
+  const [emailSaving, setEmailSaving] = useState(false);
+  const [emailMsg, setEmailMsg]       = useState<{ type: "ok" | "error"; text: string } | null>(null);
+
   // Account — password change
-  const [newPassword, setNewPassword] = useState("");
-  const [pwSaving, setPwSaving]       = useState(false);
-  const [pwMsg, setPwMsg]             = useState<{ type: "ok" | "error"; text: string } | null>(null);
+  const [newPassword, setNewPassword]         = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [pwSaving, setPwSaving]               = useState(false);
+  const [pwMsg, setPwMsg]                     = useState<{ type: "ok" | "error"; text: string } | null>(null);
 
   // Notifications (UI-only toggles)
   const [notifCode,   setNotifCode]   = useState(true);
@@ -183,9 +189,31 @@ export default function SettingsPage() {
     }
   };
 
+  const handleChangeEmail = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newEmail.trim()) return;
+    setEmailSaving(true);
+    setEmailMsg(null);
+    const { error } = await supabase.auth.updateUser({ email: newEmail.trim() });
+    if (error) {
+      setEmailMsg({ type: "error", text: error.message });
+    } else {
+      setEmailMsg({
+        type: "ok",
+        text: "Confirmation email sent. Check your inbox to confirm the new address.",
+      });
+      setNewEmail("");
+    }
+    setEmailSaving(false);
+  };
+
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newPassword) return;
+    if (newPassword !== confirmPassword) {
+      setPwMsg({ type: "error", text: "Passwords do not match." });
+      return;
+    }
     setPwSaving(true);
     setPwMsg(null);
     const { error } = await supabase.auth.updateUser({ password: newPassword });
@@ -194,6 +222,7 @@ export default function SettingsPage() {
     } else {
       setPwMsg({ type: "ok", text: "Password updated successfully." });
       setNewPassword("");
+      setConfirmPassword("");
     }
     setPwSaving(false);
   };
@@ -469,15 +498,15 @@ export default function SettingsPage() {
                 transition={{ duration: 0.2 }}
                 className="space-y-6"
               >
-                {/* Email (read-only) */}
+                {/* Change Email */}
                 <div className="rounded-2xl border border-border bg-surface-muted/15 overflow-hidden">
                   <div className="px-6 py-4 border-b border-border flex items-center gap-2.5">
                     <ShieldIcon className="h-4 w-4 text-zinc-500 shrink-0" />
-                    <h2 className="text-sm font-semibold text-white">Account Details</h2>
+                    <h2 className="text-sm font-semibold text-white">Change Email</h2>
                   </div>
-                  <div className="px-6 py-5 space-y-4">
+                  <form onSubmit={handleChangeEmail} className="px-6 py-5 space-y-4">
                     <div className="space-y-1.5">
-                      <label className="text-xs font-medium text-zinc-400">Email address</label>
+                      <label className="text-xs font-medium text-zinc-400">Current Email</label>
                       <input
                         type="email"
                         value={userEmail}
@@ -485,11 +514,34 @@ export default function SettingsPage() {
                         className="w-full rounded-lg border border-border bg-surface-muted/20 px-3 py-2.5
                           text-sm text-zinc-500 cursor-not-allowed"
                       />
-                      <p className="text-[11px] text-zinc-600">
-                        Email is managed through Supabase Auth.
-                      </p>
                     </div>
-                  </div>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-zinc-400">New Email</label>
+                      <input
+                        type="email"
+                        value={newEmail}
+                        onChange={(e) => setNewEmail(e.target.value)}
+                        placeholder="new@example.com"
+                        disabled={emailSaving}
+                        className="w-full rounded-lg border border-border bg-surface-muted/30 px-3 py-2.5
+                          text-sm text-white placeholder:text-zinc-600 focus:outline-none
+                          focus:border-accent/60 disabled:opacity-50 transition-colors"
+                      />
+                    </div>
+                    {emailMsg && (
+                      <p className={`text-sm ${emailMsg.type === "error" ? "text-red-400" : "text-green-400"}`}>
+                        {emailMsg.text}
+                      </p>
+                    )}
+                    <button
+                      type="submit"
+                      disabled={emailSaving || !newEmail.trim()}
+                      className="rounded-lg bg-accent px-5 py-2 text-sm font-medium text-white
+                        hover:bg-accent/90 disabled:opacity-50 transition-colors"
+                    >
+                      {emailSaving ? "Sending…" : "Change Email"}
+                    </button>
+                  </form>
                 </div>
 
                 {/* Password change */}
@@ -510,6 +562,18 @@ export default function SettingsPage() {
                           focus:border-accent/60 transition-colors"
                       />
                     </div>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-zinc-400">Confirm Password</label>
+                      <input
+                        type="password"
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                        placeholder="••••••••"
+                        className="w-full rounded-lg border border-border bg-surface-muted/30 px-3 py-2.5
+                          text-sm text-white placeholder:text-zinc-600 focus:outline-none
+                          focus:border-accent/60 transition-colors"
+                      />
+                    </div>
                     {pwMsg && (
                       <p className={`text-sm ${pwMsg.type === "error" ? "text-red-400" : "text-green-400"}`}>
                         {pwMsg.text}
@@ -517,7 +581,7 @@ export default function SettingsPage() {
                     )}
                     <button
                       type="submit"
-                      disabled={pwSaving || !newPassword}
+                      disabled={pwSaving || !newPassword || !confirmPassword}
                       className="rounded-lg bg-accent px-5 py-2 text-sm font-medium text-white
                         hover:bg-accent/90 disabled:opacity-50 transition-colors"
                     >
