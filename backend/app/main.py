@@ -18,6 +18,7 @@ from app.routers import notifications as notifications_router
 from app.routers import execute as execute_router
 from app.routers import attachments as attachments_router
 from app.routers import comment_votes as comment_votes_router
+from app.routers import profiles as profiles_router
 from app.schemas import (
     RoomCreate,
     RoomResponse,
@@ -64,6 +65,7 @@ app.include_router(notifications_router.router, prefix="/api/v1")
 app.include_router(execute_router.router, prefix="/api/v1")
 app.include_router(attachments_router.router, prefix="/api/v1")
 app.include_router(comment_votes_router.router, prefix="/api/v1")
+app.include_router(profiles_router.router, prefix="/api/v1")
 
 
 @app.get("/health")
