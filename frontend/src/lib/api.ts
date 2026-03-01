@@ -317,10 +317,12 @@ export type OrgMember = {
 
 export type OrgChatMessage = {
   id: string;
+  user_id?: string;
   user_email: string;
-  user_name: string;
+  user_name?: string;
   body: string;
   created_at: string;
+  is_edited?: boolean;
 };
 
 export async function getMyOrg(): Promise<Organisation | null> {
@@ -507,5 +509,41 @@ export async function sendOrgChatMessage(
   return fetchWithAuth(`/organisations/${orgId}/chat`, {
     method: "POST",
     body: JSON.stringify({ body, user_name: userName }),
+  });
+}
+
+export async function updateOrgChatMessage(
+  orgId: string,
+  messageId: string,
+  body: string,
+): Promise<OrgChatMessage> {
+  return fetchWithAuth(`/organisations/${orgId}/chat/${messageId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ body }),
+  });
+}
+
+export async function deleteOrgChatMessage(
+  orgId: string,
+  messageId: string,
+): Promise<void> {
+  return fetchWithAuth(`/organisations/${orgId}/chat/${messageId}`, {
+    method: "DELETE",
+  });
+}
+
+export async function updateGlobalChatMessage(
+  messageId: string,
+  content: string,
+): Promise<void> {
+  await fetchWithAuth(`/api/v1/chat/${messageId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ content }),
+  });
+}
+
+export async function deleteGlobalChatMessage(messageId: string): Promise<void> {
+  await fetchWithAuth(`/api/v1/chat/${messageId}`, {
+    method: "DELETE",
   });
 }

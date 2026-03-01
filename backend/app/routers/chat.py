@@ -21,7 +21,7 @@ class ReactionCreate(BaseModel):
 
 def _get_message_or_404(message_id: str) -> dict:
     row = (
-        supabase_admin.table("chat_messages")
+        supabase_admin.table("global_chat_messages")
         .select("*")
         .eq("id", message_id)
         .single()
@@ -40,7 +40,7 @@ def _require_author(message: dict, user: JWTPayload) -> None:
 @router.get("")
 def list_messages(user: JWTPayload = Depends(get_current_user)):
     rows = (
-        supabase_admin.table("chat_messages")
+        supabase_admin.table("global_chat_messages")
         .select("*")
         .order("created_at", desc=True)
         .limit(50)
@@ -56,7 +56,7 @@ def send_message(
     user: JWTPayload = Depends(get_current_user),
 ):
     row = (
-        supabase_admin.table("chat_messages")
+        supabase_admin.table("global_chat_messages")
         .insert(
             {
                 "user_id": user.sub,
@@ -75,6 +75,7 @@ def send_message(
 
 
 @router.patch("/{message_id}")
+@router.put("/{message_id}")
 def update_message(
     message_id: str,
     body: ChatMessageUpdate,
@@ -83,7 +84,7 @@ def update_message(
     message = _get_message_or_404(message_id)
     _require_author(message, user)
     row = (
-        supabase_admin.table("chat_messages")
+        supabase_admin.table("global_chat_messages")
         .update({"content": body.content})
         .eq("id", message_id)
         .execute()
@@ -98,7 +99,7 @@ def delete_message(
 ):
     message = _get_message_or_404(message_id)
     _require_author(message, user)
-    supabase_admin.table("chat_messages").delete().eq("id", message_id).execute()
+    supabase_admin.table("global_chat_messages").delete().eq("id", message_id).execute()
     return None
 
 

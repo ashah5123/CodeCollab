@@ -262,3 +262,73 @@ def post_org_chat_message(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# 9. PATCH/PUT /organisations/{organisation_id}/chat/{message_id}
+
+@router.patch("/{organisation_id}/chat/{message_id}")
+@router.put("/{organisation_id}/chat/{message_id}")
+def update_org_chat_message(
+    organisation_id: str,
+    message_id: str,
+    body: dict,
+    user: JWTPayload = Depends(get_current_user),
+):
+    """Edit an org chat message. Only the original author can edit."""
+    try:
+        msg = (
+            supabase_admin.table("org_chat_messages")
+            .select("*")
+            .eq("id", message_id)
+            .eq("organisation_id", organisation_id)
+            .single()
+            .execute()
+        )
+        if not msg.data:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Message not found")
+        if msg.data.get("user_id") != user.sub:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not the author")
+        new_body = (body.get("body") or body.get("content") or "").strip()
+        if not new_body:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Message cannot be empty")
+        row = (
+            supabase_admin.table("org_chat_messages")
+            .update({"body": new_body})
+            .eq("id", message_id)
+            .execute()
+        )
+        return row.data[0] if row.data else msg.data
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# 10. DELETE /organisations/{organisation_id}/chat/{message_id}
+
+@router.delete("/{organisation_id}/chat/{message_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_org_chat_message(
+    organisation_id: str,
+    message_id: str,
+    user: JWTPayload = Depends(get_current_user),
+):
+    """Delete an org chat message. Only the original author can delete."""
+    try:
+        msg = (
+            supabase_admin.table("org_chat_messages")
+            .select("user_id")
+            .eq("id", message_id)
+            .eq("organisation_id", organisation_id)
+            .single()
+            .execute()
+        )
+        if not msg.data:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Message not found")
+        if msg.data.get("user_id") != user.sub:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not the author")
+        supabase_admin.table("org_chat_messages").delete().eq("id", message_id).execute()
+        return None
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

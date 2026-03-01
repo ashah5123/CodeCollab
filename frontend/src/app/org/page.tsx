@@ -8,6 +8,8 @@ import {
   getOrgMembers,
   getOrgChatMessages,
   sendOrgChatMessage,
+  updateOrgChatMessage,
+  deleteOrgChatMessage,
   createOrg,
   joinOrg,
   leaveOrg,
@@ -58,7 +60,14 @@ export default function OrgPage() {
   const [joinAnotherCode, setJoinAnotherCode] = useState("");
   const [joinAnotherLoading, setJoinAnotherLoading] = useState(false);
   const [joinAnotherError, setJoinAnotherError] = useState<string | null>(null);
+  const [hoveredMsgId, setHoveredMsgId] = useState<string | null>(null);
+  const [editingMsgId, setEditingMsgId] = useState<string | null>(null);
+  const [editMsgText, setEditMsgText] = useState("");
+  const [savingMsgEdit, setSavingMsgEdit] = useState(false);
+  const [deleteConfirmMsgId, setDeleteConfirmMsgId] = useState<string | null>(null);
+  const [deletingMsgId, setDeletingMsgId] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const editMsgRef = useRef<HTMLTextAreaElement>(null);
 
   const isCreatorOrAdmin = org?.created_by === me?.id || org?.role === "owner" || org?.role === "admin";
 
@@ -91,6 +100,113 @@ export default function OrgPage() {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chatMessages]);
+
+  // Realtime subscription for org chat — set up when org is loaded
+  useEffect(() => {
+    if (!org?.id) return;
+    const channel = supabase
+      .channel(`org-chat-${org.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "org_chat_messages",
+          filter: `organisation_id=eq.${org.id}`,
+        },
+        (payload) => {
+          const newMsg = payload.new as OrgChatMessage;
+          setChatMessages((prev) => {
+            if (prev.some((m) => m.id === newMsg.id)) return prev;
+            return [...prev, newMsg];
+          });
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "org_chat_messages",
+          filter: `organisation_id=eq.${org.id}`,
+        },
+        (payload) => {
+          const updated = payload.new as OrgChatMessage;
+          setChatMessages((prev) =>
+            prev.map((m) =>
+              m.id === updated.id ? { ...updated, is_edited: true } : m
+            )
+          );
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "DELETE",
+          schema: "public",
+          table: "org_chat_messages",
+          filter: `organisation_id=eq.${org.id}`,
+        },
+        (payload) => {
+          const deletedId = (payload.old as { id: string }).id;
+          setChatMessages((prev) => prev.filter((m) => m.id !== deletedId));
+        }
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [org?.id]);
+
+  // Focus edit textarea when edit opens
+  useEffect(() => {
+    if (editingMsgId) {
+      setTimeout(() => editMsgRef.current?.focus(), 50);
+    }
+  }, [editingMsgId]);
+
+  const handleSaveEdit = async () => {
+    const trimmed = editMsgText.trim();
+    if (!trimmed || !editingMsgId || !org) return;
+    const id = editingMsgId;
+
+    // Optimistic update
+    setChatMessages((prev) =>
+      prev.map((m) => m.id === id ? { ...m, body: trimmed, is_edited: true } : m)
+    );
+    setEditingMsgId(null);
+    setEditMsgText("");
+
+    setSavingMsgEdit(true);
+    try {
+      await updateOrgChatMessage(org.id, id, trimmed);
+    } catch {
+      // Revert on error
+      setChatMessages((prev) =>
+        prev.map((m) => m.id === id ? { ...m, is_edited: false } : m)
+      );
+    } finally {
+      setSavingMsgEdit(false);
+    }
+  };
+
+  const handleConfirmDelete = async () => {
+    const id = deleteConfirmMsgId;
+    if (!id || !org) return;
+
+    // Optimistic remove
+    setChatMessages((prev) => prev.filter((m) => m.id !== id));
+    setDeleteConfirmMsgId(null);
+    setDeletingMsgId(id);
+
+    try {
+      await deleteOrgChatMessage(org.id, id);
+    } catch {
+      // Re-fetch on error
+      const msgs = await getOrgChatMessages(org.id);
+      setChatMessages(msgs);
+    } finally {
+      setDeletingMsgId(null);
+    }
+  };
 
   const handleSendChat = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -351,31 +467,99 @@ export default function OrgPage() {
 
             {tab === "chat" && (
               <div className="flex-1 flex flex-col overflow-hidden">
-                <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
+                <div className="flex-1 overflow-y-auto px-4 py-4 space-y-1">
                   {chatMessages.length === 0 ? (
                     <p className="text-sm text-zinc-600 text-center py-8">
                       No messages yet. Start the conversation!
                     </p>
                   ) : (
-                    chatMessages.map((msg) => (
-                      <div key={msg.id} className="flex items-start gap-2.5">
-                        <Avatar email={msg.user_email} />
-                        <div>
-                          <div className="flex items-baseline gap-2">
-                            <span className="text-xs font-medium text-zinc-300">
-                              {msg.user_name || msg.user_email}
-                            </span>
-                            <span className="text-[10px] text-zinc-600">
-                              {new Date(msg.created_at).toLocaleTimeString([], {
-                                hour: "2-digit",
-                                minute: "2-digit",
-                              })}
-                            </span>
+                    chatMessages.map((msg) => {
+                      const isOwn = msg.user_id === me?.id;
+                      const isEditing = editingMsgId === msg.id;
+                      return (
+                        <div
+                          key={msg.id}
+                          className="flex items-start gap-2.5 py-0.5 group rounded-lg px-1 hover:bg-white/2 transition-colors"
+                          onMouseEnter={() => setHoveredMsgId(msg.id)}
+                          onMouseLeave={() => setHoveredMsgId(null)}
+                        >
+                          <Avatar email={msg.user_email} />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-baseline gap-2 flex-wrap">
+                              <span className="text-xs font-medium text-zinc-300">
+                                {msg.user_name || msg.user_email}
+                              </span>
+                              <span className="text-[10px] text-zinc-600">
+                                {new Date(msg.created_at).toLocaleTimeString([], {
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })}
+                              </span>
+                              {msg.is_edited && (
+                                <span className="text-[10px] text-zinc-600 italic">edited</span>
+                              )}
+                            </div>
+
+                            {isEditing ? (
+                              <div className="mt-1 flex flex-col gap-2">
+                                <textarea
+                                  ref={editMsgRef}
+                                  value={editMsgText}
+                                  onChange={(e) => setEditMsgText(e.target.value)}
+                                  rows={Math.max(1, editMsgText.split("\n").length)}
+                                  className="w-full rounded-lg border border-accent/50 bg-surface-muted/60 px-3 py-2 text-sm text-white resize-none focus:outline-none focus:ring-1 focus:ring-accent"
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSaveEdit(); }
+                                    if (e.key === "Escape") { setEditingMsgId(null); setEditMsgText(""); }
+                                  }}
+                                />
+                                <div className="flex gap-2">
+                                  <button
+                                    onClick={() => { setEditingMsgId(null); setEditMsgText(""); }}
+                                    className="text-xs text-zinc-500 hover:text-zinc-300 px-2 py-1 rounded transition-colors"
+                                  >
+                                    Cancel
+                                  </button>
+                                  <button
+                                    onClick={handleSaveEdit}
+                                    disabled={!editMsgText.trim() || savingMsgEdit}
+                                    className="text-xs bg-accent text-white rounded-lg px-3 py-1 hover:opacity-90 disabled:opacity-50 transition-opacity"
+                                  >
+                                    {savingMsgEdit ? "Saving…" : "Save"}
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <p className="text-sm text-zinc-300 mt-0.5 break-words">{msg.body}</p>
+                            )}
                           </div>
-                          <p className="text-sm text-zinc-300 mt-0.5 break-words">{msg.body}</p>
+
+                          {/* Action buttons — only for own messages, visible on hover */}
+                          {isOwn && !isEditing && (
+                            <div
+                              className={`flex items-center gap-0.5 shrink-0 self-start mt-0.5 transition-opacity duration-100 ${
+                                hoveredMsgId === msg.id ? "opacity-100" : "opacity-0 pointer-events-none"
+                              }`}
+                            >
+                              <button
+                                onClick={() => { setEditingMsgId(msg.id); setEditMsgText(msg.body); }}
+                                title="Edit message"
+                                className="p-1.5 rounded-lg text-zinc-500 hover:text-zinc-300 hover:bg-zinc-700 transition-colors"
+                              >
+                                <PencilIcon className="h-3.5 w-3.5" />
+                              </button>
+                              <button
+                                onClick={() => setDeleteConfirmMsgId(msg.id)}
+                                title="Delete message"
+                                className="p-1.5 rounded-lg text-zinc-500 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                              >
+                                <TrashIcon className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                          )}
                         </div>
-                      </div>
-                    ))
+                      );
+                    })
                   )}
                   <div ref={bottomRef} />
                 </div>
@@ -508,6 +692,37 @@ export default function OrgPage() {
         </div>
       )}
 
+      {/* Delete message confirmation dialog */}
+      {deleteConfirmMsgId && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+          onClick={() => setDeleteConfirmMsgId(null)}
+        >
+          <div
+            className="w-full max-w-xs rounded-xl border border-border bg-zinc-900 p-5 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p className="text-sm font-semibold text-white mb-1">Delete message?</p>
+            <p className="text-xs text-zinc-500 mb-4">This cannot be undone.</p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setDeleteConfirmMsgId(null)}
+                className="flex-1 rounded-lg border border-border py-2 text-sm text-zinc-300 hover:bg-surface-muted transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmDelete}
+                disabled={!!deletingMsgId}
+                className="flex-1 rounded-lg bg-red-500/20 border border-red-500/30 py-2 text-sm font-medium text-red-400 hover:bg-red-500/30 disabled:opacity-50 transition-colors"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Leave confirmation dialog */}
       {leaveConfirmOpen && (
         <div
@@ -550,6 +765,24 @@ export default function OrgPage() {
 }
 
 // ─── Icons ────────────────────────────────────────────────────────────────────
+
+function PencilIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+        d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+    </svg>
+  );
+}
+
+function TrashIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+    </svg>
+  );
+}
 
 function BuildingIcon({ className }: { className?: string }) {
   return (
