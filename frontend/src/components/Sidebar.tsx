@@ -27,6 +27,29 @@ function avatarBg(email: string): string {
   return AVATAR_BG[Math.abs(h) % AVATAR_BG.length];
 }
 
+// ─── Profile username resolution ──────────────────────────────────────────────
+
+const API_BASE = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
+
+function emailToUsername(email: string): string {
+  return email.split("@")[0].toLowerCase().replace(/[^a-z0-9]/g, "_");
+}
+
+async function fetchMyUsername(email: string): Promise<string> {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return emailToUsername(email);
+    const res = await fetch(`${API_BASE}/api/v1/profiles/me`, {
+      headers: { Authorization: `Bearer ${session.access_token}` },
+    });
+    if (res.ok) {
+      const profile = await res.json();
+      return profile.username as string;
+    }
+  } catch { /* fall through */ }
+  return emailToUsername(email);
+}
+
 // ─── Tooltip (only rendered when sidebar is collapsed) ─────────────────────────
 
 function Tooltip({ label, children, show }: { label: string; children: React.ReactNode; show: boolean }) {
@@ -163,14 +186,14 @@ const dropdownVariants: Variants = {
 
 function UserAvatar({
   email,
-  userId,
+  profileUsername,
   collapsed,
   isLight,
   onToggleTheme,
   onSignOut,
 }: {
   email: string;
-  userId: string | null;
+  profileUsername: string;
   collapsed: boolean;
   isLight: boolean;
   onToggleTheme: () => void;
@@ -208,12 +231,17 @@ function UserAvatar({
           className={`relative flex items-center gap-3 rounded-xl px-2.5 py-2 w-full transition-colors
             ${open ? "bg-surface-muted/50" : "hover:bg-surface-muted/40"}`}
         >
-          {/* Avatar circle */}
-          <span className={`${bg} flex h-7 w-7 shrink-0 items-center justify-center
-            rounded-full text-[11px] font-bold text-white select-none ring-2 ring-offset-1 ring-offset-surface-muted ring-transparent
-            ${open ? "ring-accent/40" : "group-hover:ring-accent/20"} transition-all`}>
+          {/* Avatar circle — direct link to profile */}
+          <Link
+            href={profileUsername ? `/profile/${profileUsername}` : "/dashboard"}
+            onClick={(e) => e.stopPropagation()}
+            className={`${bg} flex h-7 w-7 shrink-0 items-center justify-center
+              rounded-full text-[11px] font-bold text-white select-none ring-2 ring-offset-1
+              ring-offset-surface-muted ring-transparent hover:ring-accent/50 transition-all`}
+            title="View your profile"
+          >
             {initial}
-          </span>
+          </Link>
 
           {/* Name + chevron */}
           <motion.div
@@ -276,9 +304,9 @@ function UserAvatar({
 
             {/* Nav items */}
             <div className="py-1.5 px-1.5">
-              {userId && (
+              {profileUsername && (
                 <Link
-                  href={`/profile/${userId}`}
+                  href={`/profile/${profileUsername}`}
                   onClick={() => setOpen(false)}
                   className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm
                     text-zinc-300 hover:text-white hover:bg-white/6 transition-colors"
@@ -322,10 +350,10 @@ export function Sidebar() {
   const pathname = usePathname();
   const router   = useRouter();
 
-  const [collapsed, setCollapsed] = useState(true);
-  const [isLight,   setIsLight]   = useState(false);
-  const [userId,    setUserId]    = useState<string | null>(null);
-  const [email,     setEmail]     = useState("");
+  const [collapsed,       setCollapsed]       = useState(true);
+  const [isLight,         setIsLight]         = useState(false);
+  const [email,           setEmail]           = useState("");
+  const [profileUsername, setProfileUsername] = useState("");
 
   // Restore collapse + theme from localStorage
   useEffect(() => {
@@ -339,13 +367,14 @@ export function Sidebar() {
     }
   }, []);
 
-  // Load user
+  // Load user + resolve profile username
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => {
-      if (data.user) {
-        setUserId(data.user.id);
-        setEmail(data.user.email ?? "");
-      }
+    supabase.auth.getUser().then(async ({ data }) => {
+      if (!data.user) return;
+      const userEmail = data.user.email ?? "";
+      setEmail(userEmail);
+      const username = await fetchMyUsername(userEmail);
+      setProfileUsername(username);
     });
   }, []);
 
@@ -453,7 +482,7 @@ export function Sidebar() {
         {email && (
           <UserAvatar
             email={email}
-            userId={userId}
+            profileUsername={profileUsername}
             collapsed={collapsed}
             isLight={isLight}
             onToggleTheme={toggleTheme}

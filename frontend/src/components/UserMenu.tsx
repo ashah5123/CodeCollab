@@ -74,6 +74,29 @@ function MenuItem({
   );
 }
 
+// ─── Username helpers ─────────────────────────────────────────────────────────
+
+const API_BASE = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
+
+function emailToUsername(email: string): string {
+  return email.split("@")[0].toLowerCase().replace(/[^a-z0-9]/g, "_");
+}
+
+async function fetchMyUsername(email: string): Promise<string> {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return emailToUsername(email);
+    const res = await fetch(`${API_BASE}/api/v1/profiles/me`, {
+      headers: { Authorization: `Bearer ${session.access_token}` },
+    });
+    if (res.ok) {
+      const profile = await res.json();
+      return profile.username as string;
+    }
+  } catch { /* fall through */ }
+  return emailToUsername(email);
+}
+
 // ─── UserMenu ─────────────────────────────────────────────────────────────────
 
 type UserMenuProps = {
@@ -82,15 +105,24 @@ type UserMenuProps = {
 
 export function UserMenu({ user: userProp }: UserMenuProps = {}) {
   const router = useRouter();
-  const [user, setUser] = useState<{ id: string; email: string } | null>(userProp ?? null);
-  const [open, setOpen]   = useState(false);
+  const [user, setUser]               = useState<{ id: string; email: string } | null>(userProp ?? null);
+  const [profileUsername, setProfileUsername] = useState<string>("");
+  const [open, setOpen]               = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (userProp) return;
-    supabase.auth.getUser().then(({ data }) => {
-      if (data.user) setUser({ id: data.user.id, email: data.user.email ?? "" });
-    });
+    async function load() {
+      let u = userProp;
+      if (!u) {
+        const { data } = await supabase.auth.getUser();
+        if (!data.user) return;
+        u = { id: data.user.id, email: data.user.email ?? "" };
+        setUser(u);
+      }
+      const username = await fetchMyUsername(u.email);
+      setProfileUsername(username);
+    }
+    load();
   }, [userProp]);
 
   // Close on outside click
@@ -173,8 +205,12 @@ export function UserMenu({ user: userProp }: UserMenuProps = {}) {
             className="absolute right-0 top-full mt-2 w-60 rounded-2xl border border-white/10
               bg-zinc-900/95 backdrop-blur-xl shadow-2xl z-50 overflow-hidden origin-top-right"
           >
-            {/* Identity header */}
-            <div className="flex items-center gap-3 px-4 py-3.5">
+            {/* Identity header — links to profile */}
+            <Link
+              href={profileUsername ? `/profile/${profileUsername}` : "/dashboard"}
+              onClick={() => setOpen(false)}
+              className="flex items-center gap-3 px-4 py-3.5 hover:bg-white/4 transition-colors"
+            >
               <span className={`${bg} flex h-10 w-10 shrink-0 items-center justify-center
                 rounded-full text-base font-bold text-white select-none`}>
                 {initial}
@@ -183,14 +219,14 @@ export function UserMenu({ user: userProp }: UserMenuProps = {}) {
                 <p className="text-sm font-semibold text-white truncate">{displayName}</p>
                 <p className="text-[11px] text-zinc-500 truncate">{user.email}</p>
               </div>
-            </div>
+            </Link>
 
             <Sep />
 
             {/* Nav links */}
             <div className="py-1.5 px-1.5">
               <MenuItem
-                href={`/profile/${user.id}`}
+                href={profileUsername ? `/profile/${profileUsername}` : "/dashboard"}
                 icon={<UserCircleIcon className="h-4 w-4" />}
                 onClick={() => setOpen(false)}
               >

@@ -36,7 +36,23 @@ class ProfileUpdate(BaseModel):
     avatar_url: str | None = Field(default=None, max_length=500)
 
 
-# ── 1. PUT /profiles/me — must come before /{username} ───────────────────────
+# ── 1. GET /profiles/me — must come before /{username} ───────────────────────
+
+@router.get("/me")
+def get_my_profile(user: JWTPayload = Depends(get_current_user)):
+    """Return the current user's own profile, 404 if they haven't created one yet."""
+    row = (
+        supabase_admin.table("profiles")
+        .select("*")
+        .eq("user_id", user.sub)
+        .execute()
+    )
+    if not row.data:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Profile not found")
+    return row.data[0]
+
+
+# ── 2. PUT /profiles/me — must come before /{username} ───────────────────────
 
 @router.put("/me")
 def update_my_profile(
