@@ -240,7 +240,7 @@ def generate_submission_meta(
     try:
         client = Groq(api_key=settings.groq_api_key)
         completion = client.chat.completions.create(
-            model="llama3-70b-8192",
+            model="llama-3.3-70b-versatile",
             messages=[{"role": "user", "content": prompt}],
             max_tokens=200,
             temperature=0.2,
@@ -565,7 +565,7 @@ def ai_review_submission(
     submission_id: str,
     user: JWTPayload = Depends(get_current_user),
 ):
-    """Call Groq (llama3-70b-8192) to review the submission code and return suggestions."""
+    """Call Groq (llama-3.3-70b-versatile) to review the submission code and return suggestions."""
     if not settings.groq_api_key:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -616,7 +616,7 @@ Be direct and specific. Refer to line content, not line numbers."""
     try:
         client = Groq(api_key=settings.groq_api_key)
         completion = client.chat.completions.create(
-            model="llama3-70b-8192",
+            model="llama-3.3-70b-versatile",
             messages=[{"role": "user", "content": prompt}],
             max_tokens=1024,
             temperature=0.3,
@@ -699,7 +699,7 @@ Be direct and specific. Do not repeat comments verbatim."""
     try:
         client = Groq(api_key=settings.groq_api_key)
         completion = client.chat.completions.create(
-            model="llama3-70b-8192",
+            model="llama-3.3-70b-versatile",
             messages=[{"role": "user", "content": prompt}],
             max_tokens=512,
             temperature=0.3,
