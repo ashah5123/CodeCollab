@@ -20,6 +20,24 @@ async function apiFetch(path: string) {
   return res.json();
 }
 
+async function apiPut(path: string, body: unknown) {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) throw new Error("Not authenticated");
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${session.access_token}`,
+    },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as { detail?: string }).detail || `${res.status}`);
+  }
+  return res.json();
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type Profile = {
@@ -183,6 +201,7 @@ export default function ProfilePage() {
   const router   = useRouter();
   const username = decodeURIComponent(params.username ?? "");
 
+  const [myUserId,    setMyUserId]    = useState<string | null>(null);
   const [profile,     setProfile]     = useState<Profile | null>(null);
   const [submissions, setSubmissions] = useState<SubmissionRow[]>([]);
   const [activity,    setActivity]    = useState<ActivityRow[]>([]);
@@ -191,10 +210,19 @@ export default function ProfilePage() {
   const [tabLoading,  setTabLoading]  = useState(false);
   const [notFound,    setNotFound]    = useState(false);
 
+  // Edit modal state
+  const [editOpen,      setEditOpen]      = useState(false);
+  const [editUsername,  setEditUsername]  = useState("");
+  const [editBio,       setEditBio]       = useState("");
+  const [editAvatarUrl, setEditAvatarUrl] = useState("");
+  const [editSaving,    setEditSaving]    = useState(false);
+  const [editError,     setEditError]     = useState<string | null>(null);
+
   // Auth guard
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
-      if (!data.user) router.replace("/login");
+      if (!data.user) { router.replace("/login"); return; }
+      setMyUserId(data.user.id);
     });
   }, [router]);
 
@@ -233,6 +261,34 @@ export default function ProfilePage() {
   function handleTabChange(t: Tab) {
     setTab(t);
     if (t === "activity") loadActivity();
+  }
+
+  function openEditModal() {
+    if (!profile) return;
+    setEditUsername(profile.username);
+    setEditBio(profile.bio ?? "");
+    setEditAvatarUrl(profile.avatar_url ?? "");
+    setEditError(null);
+    setEditOpen(true);
+  }
+
+  async function handleSaveProfile(e: React.FormEvent) {
+    e.preventDefault();
+    setEditSaving(true);
+    setEditError(null);
+    try {
+      const payload: Record<string, string> = {};
+      if (editUsername.trim()) payload.username = editUsername.trim();
+      if (editBio.trim())      payload.bio      = editBio.trim();
+      if (editAvatarUrl.trim()) payload.avatar_url = editAvatarUrl.trim();
+      const updated: Profile = await apiPut("/api/v1/profiles/me", payload);
+      setProfile(updated);
+      setEditOpen(false);
+    } catch (err) {
+      setEditError(err instanceof Error ? err.message : "Failed to save profile");
+    } finally {
+      setEditSaving(false);
+    }
   }
 
   // ── Loading ─────────────────────────────────────────────────────────────────
@@ -310,6 +366,7 @@ export default function ProfilePage() {
   }
 
   const approvedCount = submissions.filter((s) => s.status === "approved").length;
+  const isOwner = !!myUserId && myUserId === profile.user_id;
 
   // ── Main ────────────────────────────────────────────────────────────────────
   return (
@@ -327,7 +384,20 @@ export default function ProfilePage() {
             <ArrowLeftIcon className="h-3.5 w-3.5" />
             Dashboard
           </Link>
-          <span className="text-xs text-zinc-600 font-mono">@{profile.username}</span>
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-zinc-600 font-mono">@{profile.username}</span>
+            {isOwner && (
+              <button
+                onClick={openEditModal}
+                className="flex items-center gap-1.5 rounded-lg border border-border bg-surface-muted/30
+                  px-3 py-1.5 text-xs font-medium text-zinc-300 hover:bg-surface-muted/60
+                  hover:text-white transition-all"
+              >
+                <PencilIcon className="h-3 w-3" />
+                Edit Profile
+              </button>
+            )}
+          </div>
         </header>
 
         {/* Scrollable body */}
@@ -602,6 +672,177 @@ export default function ProfilePage() {
           </div>
         </div>
       </div>
+
+      {/* ── Edit Profile Modal ── */}
+      <AnimatePresence>
+        {editOpen && (
+          <>
+            {/* Backdrop */}
+            <motion.div
+              key="edit-backdrop"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm"
+              onClick={() => !editSaving && setEditOpen(false)}
+            />
+
+            {/* Dialog */}
+            <motion.div
+              key="edit-modal"
+              initial={{ opacity: 0, scale: 0.96, y: 12 }}
+              animate={{ opacity: 1, scale: 1,    y: 0  }}
+              exit={{    opacity: 0, scale: 0.96, y: 12 }}
+              transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+              className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none"
+            >
+              <form
+                onSubmit={handleSaveProfile}
+                onClick={(e) => e.stopPropagation()}
+                className="pointer-events-auto w-full max-w-md rounded-2xl border border-border
+                  bg-zinc-900/95 backdrop-blur-xl shadow-2xl overflow-hidden"
+              >
+                {/* Header */}
+                <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+                  <h2 className="text-sm font-semibold text-white">Edit Profile</h2>
+                  <button
+                    type="button"
+                    onClick={() => !editSaving && setEditOpen(false)}
+                    className="h-7 w-7 flex items-center justify-center rounded-lg text-zinc-500
+                      hover:text-white hover:bg-surface-muted/60 transition-colors"
+                  >
+                    <XIcon className="h-4 w-4" />
+                  </button>
+                </div>
+
+                {/* Fields */}
+                <div className="px-5 py-5 space-y-4">
+
+                  {/* Avatar preview + URL */}
+                  <div className="flex items-center gap-4">
+                    {editAvatarUrl ? (
+                      <img
+                        src={editAvatarUrl}
+                        alt="preview"
+                        className="h-14 w-14 rounded-xl object-cover ring-2 ring-white/10 shrink-0"
+                        onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                      />
+                    ) : (
+                      <div
+                        className={`h-14 w-14 rounded-xl bg-gradient-to-br
+                          ${avatarGradient(editUsername || profile.username)}
+                          flex items-center justify-center text-xl font-bold text-white shrink-0 select-none`}
+                      >
+                        {(editUsername || profile.username)[0]?.toUpperCase() ?? "?"}
+                      </div>
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <label className="block text-xs font-medium text-zinc-400 mb-1.5">
+                        Avatar URL
+                      </label>
+                      <input
+                        type="url"
+                        value={editAvatarUrl}
+                        onChange={(e) => setEditAvatarUrl(e.target.value)}
+                        placeholder="https://example.com/avatar.png"
+                        disabled={editSaving}
+                        className="w-full rounded-lg border border-border bg-surface-muted/30 px-3 py-2
+                          text-sm text-white placeholder-zinc-600 focus:outline-none
+                          focus:border-accent/60 disabled:opacity-50 transition-colors"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Username */}
+                  <div>
+                    <label className="block text-xs font-medium text-zinc-400 mb-1.5">
+                      Username
+                    </label>
+                    <input
+                      type="text"
+                      value={editUsername}
+                      onChange={(e) => setEditUsername(e.target.value)}
+                      placeholder="your_username"
+                      maxLength={50}
+                      disabled={editSaving}
+                      className="w-full rounded-lg border border-border bg-surface-muted/30 px-3 py-2
+                        text-sm text-white placeholder-zinc-600 focus:outline-none
+                        focus:border-accent/60 disabled:opacity-50 transition-colors"
+                    />
+                  </div>
+
+                  {/* Bio */}
+                  <div>
+                    <label className="block text-xs font-medium text-zinc-400 mb-1.5">
+                      Bio
+                    </label>
+                    <textarea
+                      value={editBio}
+                      onChange={(e) => setEditBio(e.target.value)}
+                      placeholder="Tell others a bit about yourself…"
+                      maxLength={500}
+                      rows={3}
+                      disabled={editSaving}
+                      className="w-full rounded-lg border border-border bg-surface-muted/30 px-3 py-2
+                        text-sm text-white placeholder-zinc-600 focus:outline-none
+                        focus:border-accent/60 disabled:opacity-50 resize-none transition-colors"
+                    />
+                    <p className="text-[10px] text-zinc-600 text-right mt-0.5">
+                      {editBio.length}/500
+                    </p>
+                  </div>
+
+                  {/* Error */}
+                  <AnimatePresence>
+                    {editError && (
+                      <motion.p
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: "auto" }}
+                        exit={{ opacity: 0, height: 0 }}
+                        className="text-xs text-red-400 bg-red-500/10 border border-red-500/20
+                          rounded-lg px-3 py-2"
+                      >
+                        {editError}
+                      </motion.p>
+                    )}
+                  </AnimatePresence>
+                </div>
+
+                {/* Footer */}
+                <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-border bg-surface-muted/10">
+                  <button
+                    type="button"
+                    onClick={() => setEditOpen(false)}
+                    disabled={editSaving}
+                    className="px-4 py-2 rounded-lg text-sm font-medium text-zinc-400
+                      hover:text-white hover:bg-surface-muted/40 transition-colors disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={editSaving || !editUsername.trim()}
+                    className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium
+                      bg-accent text-white hover:bg-accent/90 disabled:opacity-50
+                      disabled:cursor-not-allowed transition-colors"
+                  >
+                    {editSaving && (
+                      <svg className="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none">
+                        <circle className="opacity-25" cx="12" cy="12" r="10"
+                          stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor"
+                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                      </svg>
+                    )}
+                    {editSaving ? "Saving…" : "Save Changes"}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -665,6 +906,23 @@ function ChevronRightIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+    </svg>
+  );
+}
+
+function PencilIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+        d="M15.232 5.232l3.536 3.536M9 13l6.586-6.586a2 2 0 112.828 2.828L11.828 15.828a2 2 0 01-1.414.586H8v-2a2 2 0 01.586-1.414z" />
+    </svg>
+  );
+}
+
+function XIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
     </svg>
   );
 }
