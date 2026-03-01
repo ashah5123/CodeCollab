@@ -217,6 +217,7 @@ export default function ProfilePage() {
   const [editAvatarUrl, setEditAvatarUrl] = useState("");
   const [editSaving,    setEditSaving]    = useState(false);
   const [editError,     setEditError]     = useState<string | null>(null);
+  const [savedSuccess,  setSavedSuccess]  = useState(false);
 
   // Auth guard + profile load (combined so myUserId is available for auto-create logic)
   useEffect(() => {
@@ -315,7 +316,10 @@ export default function ProfilePage() {
       if (editAvatarUrl.trim()) payload.avatar_url = editAvatarUrl.trim();
       const updated: Profile = await apiPut("/api/v1/profiles/me", payload);
       setProfile(updated);
+      setSavedSuccess(true);
+      await new Promise<void>((r) => setTimeout(r, 800));
       setEditOpen(false);
+      setSavedSuccess(false);
     } catch (err) {
       setEditError(err instanceof Error ? err.message : "Failed to save profile");
     } finally {
@@ -843,32 +847,59 @@ export default function ProfilePage() {
 
                 {/* Footer */}
                 <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-border bg-surface-muted/10">
-                  <button
-                    type="button"
-                    onClick={() => setEditOpen(false)}
-                    disabled={editSaving}
-                    className="px-4 py-2 rounded-lg text-sm font-medium text-zinc-400
-                      hover:text-white hover:bg-surface-muted/40 transition-colors disabled:opacity-50"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={editSaving || !editUsername.trim()}
-                    className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium
-                      bg-accent text-white hover:bg-accent/90 disabled:opacity-50
-                      disabled:cursor-not-allowed transition-colors"
-                  >
-                    {editSaving && (
-                      <svg className="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none">
-                        <circle className="opacity-25" cx="12" cy="12" r="10"
-                          stroke="currentColor" strokeWidth="4" />
-                        <path className="opacity-75" fill="currentColor"
-                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                      </svg>
+                  <AnimatePresence mode="wait">
+                    {savedSuccess ? (
+                      <motion.div
+                        key="saved-success"
+                        initial={{ opacity: 0, scale: 0.9 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.9 }}
+                        transition={{ duration: 0.18, ease: "easeOut" }}
+                        className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-green-400"
+                      >
+                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                        </svg>
+                        Saved!
+                      </motion.div>
+                    ) : (
+                      <motion.div
+                        key="save-buttons"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.12 }}
+                        className="flex items-center gap-2"
+                      >
+                        <button
+                          type="button"
+                          onClick={() => setEditOpen(false)}
+                          disabled={editSaving}
+                          className="px-4 py-2 rounded-lg text-sm font-medium text-zinc-400
+                            hover:text-white hover:bg-surface-muted/40 transition-colors disabled:opacity-50"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="submit"
+                          disabled={editSaving || !editUsername.trim()}
+                          className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium
+                            bg-accent text-white hover:bg-accent/90 disabled:opacity-50
+                            disabled:cursor-not-allowed transition-colors"
+                        >
+                          {editSaving && (
+                            <svg className="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none">
+                              <circle className="opacity-25" cx="12" cy="12" r="10"
+                                stroke="currentColor" strokeWidth="4" />
+                              <path className="opacity-75" fill="currentColor"
+                                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                            </svg>
+                          )}
+                          {editSaving ? "Saving…" : "Save Changes"}
+                        </button>
+                      </motion.div>
                     )}
-                    {editSaving ? "Saving…" : "Save Changes"}
-                  </button>
+                  </AnimatePresence>
                 </div>
               </form>
             </motion.div>

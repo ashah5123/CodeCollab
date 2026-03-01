@@ -550,13 +550,32 @@ export default function ReviewPage() {
       return;
     }
     setSubmitting(true);
+
+    // Optimistic update
+    const tempId = `temp-${Date.now()}`;
+    const line = commentLine ? parseInt(commentLine, 10) : undefined;
+    const tempComment: ReviewComment = {
+      id: tempId,
+      submission_id: params.id,
+      author_id: userId ?? "",
+      author_email: userEmail ?? "",
+      body: commentBody.trim(),
+      line_number: line,
+      created_at: new Date().toISOString(),
+    };
+    setComments((prev) => [...prev, tempComment]);
+    const savedBody = commentBody;
+    const savedLine = commentLine;
+    setCommentBody("");
+    setCommentLine("");
+
     try {
-      const line = commentLine ? parseInt(commentLine, 10) : undefined;
-      const c = await addReviewComment(params.id, commentBody.trim(), line);
-      setComments((prev) => [...prev, c]);
-      setCommentBody("");
-      setCommentLine("");
+      const c = await addReviewComment(params.id, savedBody.trim(), line);
+      setComments((prev) => prev.map((cm) => cm.id === tempId ? c : cm));
     } catch (e) {
+      setComments((prev) => prev.filter((cm) => cm.id !== tempId));
+      setCommentBody(savedBody);
+      setCommentLine(savedLine);
       setError((e as Error).message);
     } finally {
       setSubmitting(false);
@@ -566,12 +585,21 @@ export default function ReviewPage() {
   const handleEditComment = async (commentId: string) => {
     if (!editBody.trim()) return;
     setActionLoading(true);
+
+    // Optimistic update
+    const prevComments = comments;
+    setComments((prev) => prev.map((c) => c.id === commentId ? { ...c, body: editBody.trim() } : c));
+    setEditingCommentId(null);
+    const savedBody = editBody;
+    setEditBody("");
+
     try {
-      const updated = await editComment(params.id, commentId, editBody.trim());
+      const updated = await editComment(params.id, commentId, savedBody.trim());
       setComments((prev) => prev.map((c) => c.id === commentId ? updated : c));
-      setEditingCommentId(null);
-      setEditBody("");
     } catch (e) {
+      setComments(prevComments);
+      setEditingCommentId(commentId);
+      setEditBody(savedBody);
       setError((e as Error).message);
     } finally {
       setActionLoading(false);
@@ -580,11 +608,16 @@ export default function ReviewPage() {
 
   const handleDeleteComment = async (commentId: string) => {
     setActionLoading(true);
+
+    // Optimistic update
+    const prevComments = comments;
+    setComments((prev) => prev.filter((c) => c.id !== commentId));
+    setDeleteCommentConfirmId(null);
+
     try {
       await deleteComment(params.id, commentId);
-      setComments((prev) => prev.filter((c) => c.id !== commentId));
-      setDeleteCommentConfirmId(null);
     } catch (e) {
+      setComments(prevComments);
       setError((e as Error).message);
     } finally {
       setActionLoading(false);
@@ -606,9 +639,17 @@ export default function ReviewPage() {
 
   const handleApprove = async () => {
     setSubmitting(true);
+
+    // Optimistic update
+    const prevSubmission = submission;
+    setSubmission((prev) => prev ? { ...prev, status: "approved" } : prev);
+
     try {
       const updated = await approveSubmission(params.id, feedback || undefined);
       setSubmission(updated);
+    } catch (e) {
+      setSubmission(prevSubmission);
+      setError((e as Error).message);
     } finally {
       setSubmitting(false);
     }
@@ -616,9 +657,17 @@ export default function ReviewPage() {
 
   const handleReject = async () => {
     setSubmitting(true);
+
+    // Optimistic update
+    const prevSubmission = submission;
+    setSubmission((prev) => prev ? { ...prev, status: "rejected" } : prev);
+
     try {
       const updated = await rejectSubmission(params.id, feedback || undefined);
       setSubmission(updated);
+    } catch (e) {
+      setSubmission(prevSubmission);
+      setError((e as Error).message);
     } finally {
       setSubmitting(false);
     }
@@ -657,19 +706,28 @@ export default function ReviewPage() {
   };
 
   const handleDeleteAttachment = async (attachmentId: string) => {
+    // Optimistic update
+    const prevAttachments = attachments;
+    setAttachments((prev) => prev.filter((a) => a.id !== attachmentId));
+
     try {
       await deleteAttachment(params.id, attachmentId);
-      setAttachments((prev) => prev.filter((a) => a.id !== attachmentId));
     } catch (err) {
+      setAttachments(prevAttachments);
       setError((err as Error).message);
     }
   };
 
   const handleStatusChange = async (newStatus: "open" | "in_review" | "resolved") => {
+    // Optimistic update
+    const prevSubmission = submission;
+    setSubmission((prev) => prev ? { ...prev, status: newStatus } : prev);
+
     try {
       const updated = await changeSubmissionStatus(params.id, newStatus);
       setSubmission(updated);
     } catch (err) {
+      setSubmission(prevSubmission);
       setError((err as Error).message);
     }
   };
