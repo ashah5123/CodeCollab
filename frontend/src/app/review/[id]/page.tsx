@@ -29,6 +29,7 @@ import {
   changeSubmissionStatus,
   requestAiReview,
   summarizeDiscussion,
+  withRetry,
   type Submission,
   type ReviewComment,
   type OrgMember,
@@ -477,14 +478,18 @@ export default function ReviewPage() {
   }, []);
 
   const fetchAll = useCallback(async () => {
-    if (!params.id) return;
+    if (!params.id) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
+    setError(null);
     try {
       const [subResult, cmtsResult, vtsResult, attsResult] = await Promise.allSettled([
-        getSubmission(params.id),
-        listReviewComments(params.id),
-        getSubmissionCommentVotes(params.id),
-        listAttachments(params.id),
+        withRetry(() => getSubmission(params.id), 3),
+        withRetry(() => listReviewComments(params.id), 3),
+        withRetry(() => getSubmissionCommentVotes(params.id), 3),
+        withRetry(() => listAttachments(params.id), 3),
       ]);
       if (subResult.status === "rejected") {
         setError((subResult.reason as Error).message ?? "Failed to load submission");
@@ -543,8 +548,6 @@ export default function ReviewPage() {
     e.preventDefault();
     if (!commentBody.trim()) return;
     const { data: { session } } = await supabase.auth.getSession();
-    console.log("handleAddComment session:", session);
-    console.log("handleAddComment access_token:", session?.access_token);
     if (!session || !session.access_token) {
       setError("You must be logged in to post a comment.");
       return;
@@ -796,16 +799,29 @@ export default function ReviewPage() {
       <div className="flex h-screen overflow-hidden">
         <Sidebar />
         <div className="flex-1 flex items-center justify-center">
-          <div className="text-center space-y-4">
+          <div className="text-center space-y-4 max-w-sm px-4">
             <div className="flex items-center justify-center w-14 h-14 rounded-2xl bg-red-500/10 border border-red-500/20 mx-auto">
               <svg className="w-7 h-7 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
               </svg>
             </div>
             <p className="text-zinc-300 font-medium">{error || "Submission not found."}</p>
-            <Link href="/dashboard" className="inline-block text-sm text-[hsl(var(--accent))] hover:underline">
-              ← Back to dashboard
-            </Link>
+            <div className="flex items-center justify-center gap-3 flex-wrap">
+              {error && (
+                <button
+                  onClick={() => fetchAll()}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface-muted px-4 py-2 text-sm font-medium text-white hover:bg-surface-muted/80 transition-colors"
+                >
+                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  Try again
+                </button>
+              )}
+              <Link href="/dashboard" className="inline-block text-sm text-[hsl(var(--accent))] hover:underline">
+                ← Back to dashboard
+              </Link>
+            </div>
           </div>
         </div>
       </div>

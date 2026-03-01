@@ -4,6 +4,32 @@ const API_BASE = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
 
 // ─── Core helper ──────────────────────────────────────────────────────────────
 
+/**
+ * Retry an async function up to `maxAttempts` times with exponential backoff.
+ * Network errors and 5xx responses are retried; 4xx and auth errors are not.
+ */
+export async function withRetry<T>(
+  fn: () => Promise<T>,
+  maxAttempts = 3,
+  baseDelayMs = 600,
+): Promise<T> {
+  let lastErr: unknown;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastErr = err;
+      const msg = (err as Error).message ?? "";
+      // Do not retry auth failures or explicit client errors (4xx)
+      if (msg === "Not authenticated" || /^4\d\d/.test(msg)) break;
+      if (attempt < maxAttempts) {
+        await new Promise((r) => setTimeout(r, baseDelayMs * 2 ** (attempt - 1)));
+      }
+    }
+  }
+  throw lastErr;
+}
+
 async function fetchWithAuth(path: string, options: RequestInit = {}) {
   const { data: { session } } = await supabase.auth.getSession();
 
