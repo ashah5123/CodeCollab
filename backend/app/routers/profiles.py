@@ -21,6 +21,9 @@ Run the following SQL in your Supabase SQL editor to create the required table:
 Route order matters: PUT /me must be declared before GET /{username} so
 FastAPI does not treat the literal string "me" as a username path parameter.
 """
+import re
+import secrets
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
@@ -36,20 +39,80 @@ class ProfileUpdate(BaseModel):
     avatar_url: str | None = Field(default=None, max_length=500)
 
 
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+def _derive_username(email: str) -> str:
+    """Turn an email address into a URL-safe username slug."""
+    local = (email or "user").split("@")[0]
+    slug = re.sub(r"[^a-z0-9]", "_", local.lower())[:40].strip("_") or "user"
+    return slug
+
+
+def _unique_username(base: str) -> str:
+    """Return *base* if unclaimed, otherwise *base_2*, *base_3*, …"""
+    candidate = base
+    for i in range(2, 200):
+        existing = (
+            supabase_admin.table("profiles")
+            .select("id")
+            .eq("username", candidate)
+            .execute()
+        )
+        if not existing.data:
+            return candidate
+        candidate = f"{base}_{i}"
+    # Absolute fallback — should never be reached in practice
+    return f"{base}_{secrets.token_hex(3)}"
+
+
 # ── 1. GET /profiles/me — must come before /{username} ───────────────────────
 
 @router.get("/me")
 def get_my_profile(user: JWTPayload = Depends(get_current_user)):
-    """Return the current user's own profile, 404 if they haven't created one yet."""
+    """Return the current user's own profile.
+
+    Auto-creates a default profile from their email if one does not exist yet,
+    so this endpoint is always guaranteed to return a profile for authenticated users.
+    """
+    # Fast path — profile already exists
     row = (
         supabase_admin.table("profiles")
         .select("*")
         .eq("user_id", user.sub)
         .execute()
     )
-    if not row.data:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Profile not found")
-    return row.data[0]
+    if row.data:
+        return row.data[0]
+
+    # Auto-create from email
+    base     = _derive_username(user.email or "")
+    username = _unique_username(base)
+
+    try:
+        created = (
+            supabase_admin.table("profiles")
+            .insert({"user_id": user.sub, "username": username})
+            .execute()
+        )
+        if created.data:
+            return created.data[0]
+    except Exception:
+        pass  # Likely a race-condition duplicate insert — re-fetch below
+
+    # Re-fetch in case a concurrent request already created it
+    row = (
+        supabase_admin.table("profiles")
+        .select("*")
+        .eq("user_id", user.sub)
+        .execute()
+    )
+    if row.data:
+        return row.data[0]
+
+    raise HTTPException(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        detail="Could not create profile",
+    )
 
 
 # ── 2. PUT /profiles/me — must come before /{username} ───────────────────────

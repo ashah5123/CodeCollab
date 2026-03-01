@@ -218,31 +218,63 @@ export default function ProfilePage() {
   const [editSaving,    setEditSaving]    = useState(false);
   const [editError,     setEditError]     = useState<string | null>(null);
 
-  // Auth guard
-  useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => {
-      if (!data.user) { router.replace("/login"); return; }
-      setMyUserId(data.user.id);
-    });
-  }, [router]);
-
-  // Load profile + submissions on mount
+  // Auth guard + profile load (combined so myUserId is available for auto-create logic)
   useEffect(() => {
     if (!username) return;
-    setLoading(true);
-    setNotFound(false);
 
-    apiFetch(`/api/v1/profiles/${encodeURIComponent(username)}`)
-      .then((p: Profile) => {
+    async function load() {
+      // 1. Auth check
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) { router.replace("/login"); return; }
+      setMyUserId(user.id);
+
+      setLoading(true);
+      setNotFound(false);
+
+      try {
+        // 2. Try to fetch the requested profile by username
+        const p: Profile = await apiFetch(`/api/v1/profiles/${encodeURIComponent(username)}`);
         setProfile(p);
-        return apiFetch(`/api/v1/profiles/${encodeURIComponent(username)}/submissions`);
-      })
-      .then((subs: SubmissionRow[]) => setSubmissions(subs))
-      .catch((err: Error) => {
-        if (err.message === "404") setNotFound(true);
-      })
-      .finally(() => setLoading(false));
-  }, [username]);
+        const subs: SubmissionRow[] = await apiFetch(
+          `/api/v1/profiles/${encodeURIComponent(username)}/submissions`
+        );
+        setSubmissions(subs);
+      } catch (err) {
+        if ((err as Error).message !== "404") {
+          setNotFound(true);
+          setLoading(false);
+          return;
+        }
+
+        // 3. Profile not found — check if this could be the current user's own profile.
+        //    GET /me auto-creates a profile from their email, so calling it here ensures
+        //    the profile exists and returns whatever username was assigned.
+        try {
+          const mine: Profile = await apiFetch("/api/v1/profiles/me");
+
+          if (mine.username === username) {
+            // The auto-created profile matches the requested URL — show it.
+            setProfile(mine);
+            const subs: SubmissionRow[] = await apiFetch(
+              `/api/v1/profiles/${encodeURIComponent(mine.username)}/submissions`
+            );
+            setSubmissions(subs);
+          } else {
+            // User has a profile but under a different username — redirect.
+            router.replace(`/profile/${encodeURIComponent(mine.username)}`);
+            return;
+          }
+        } catch {
+          // Genuinely not found (or not logged in)
+          setNotFound(true);
+        }
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    load();
+  }, [username, router]);
 
   // Lazy-load activity tab
   const loadActivity = useCallback(async () => {
