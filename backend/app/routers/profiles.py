@@ -7,10 +7,14 @@ Run the following SQL in your Supabase SQL editor to create the required table:
         id          uuid primary key default gen_random_uuid(),
         user_id     uuid not null unique references auth.users(id) on delete cascade,
         username    text not null unique,
+        full_name   text,
         bio         text,
         avatar_url  text,
         created_at  timestamptz not null default now()
     );
+
+    -- If the table already exists, add the full_name column:
+    -- alter table public.profiles add column if not exists full_name text;
 
     alter table public.profiles enable row level security;
     create policy "Public profiles are viewable by everyone"
@@ -35,6 +39,7 @@ router = APIRouter(prefix="/profiles", tags=["profiles"])
 
 class ProfileUpdate(BaseModel):
     username: str | None = Field(default=None, min_length=1, max_length=50)
+    full_name: str | None = Field(default=None, max_length=100)
     bio: str | None = Field(default=None, max_length=500)
     avatar_url: str | None = Field(default=None, max_length=500)
 

@@ -415,6 +415,7 @@ export function Sidebar() {
     { href: "/leaderboard",label: "Leaderboard",  icon: <TrophyIcon className="h-5 w-5" /> },
     { href: "/review",     label: "Review",       icon: <ClipboardCheckIcon className="h-5 w-5" /> },
     { href: "/org",        label: "Organisation", icon: <BuildingIcon className="h-5 w-5" /> },
+    { href: "/settings",   label: "Settings",     icon: <SettingsIcon className="h-5 w-5" /> },
   ];
 
   return (
