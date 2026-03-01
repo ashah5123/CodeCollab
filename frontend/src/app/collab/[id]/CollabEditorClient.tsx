@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import CodeMirror from "@uiw/react-codemirror";
 import { basicDark } from "@uiw/codemirror-theme-basic";
 import { javascript } from "@codemirror/lang-javascript";
@@ -16,7 +17,7 @@ import {
 import type { DecorationSet, ViewUpdate } from "@codemirror/view";
 import { StateField, StateEffect } from "@codemirror/state";
 import type { Range } from "@codemirror/state";
-import { deleteCollabRoom } from "@/lib/api";
+import { deleteCollabRoom, saveCollabRoomCode, createSubmission } from "@/lib/api";
 import { VoiceVideoCall } from "@/components/VoiceVideoCall";
 import {
   setupCollabChannel,
@@ -25,7 +26,6 @@ import {
   type RoomChatMessage,
   type SelectionPayload,
 } from "@/lib/realtime";
-import { saveCollabRoomCode } from "@/lib/api";
 
 const DEBOUNCE_MS = 50;
 const CURSOR_STALE_MS = 10_000;
@@ -310,11 +310,15 @@ export function CollabEditorClient({
   userId,
   roomCreatedBy,
 }: CollabEditorClientProps) {
+  const router = useRouter();
   const [code, setCode] = useState(initialCode);
   const [language] = useState(roomLanguage);
   const [savedToast, setSavedToast] = useState(false);
   const [deleteRoomConfirmOpen, setDeleteRoomConfirmOpen] = useState(false);
   const [deleteRoomLoading, setDeleteRoomLoading] = useState(false);
+  const [submitLoading, setSubmitLoading] = useState(false);
+  const [submitError, setSubmitError]     = useState<string | null>(null);
+  const [submitToast, setSubmitToast]     = useState(false);
   const [members, setMembers] = useState<MemberInfo[]>([]);
   const [chatMessages, setChatMessages] = useState<RoomChatMessage[]>([]);
   const [chatInput, setChatInput] = useState("");
@@ -486,9 +490,24 @@ export function CollabEditorClient({
   }, [roomId, code]);
 
   const handleSubmitToReview = useCallback(async () => {
-    await saveCollabRoomCode(roomId, code);
-    window.location.href = "/dashboard";
-  }, [roomId, code]);
+    if (!code.trim()) return;
+    setSubmitLoading(true);
+    setSubmitError(null);
+    try {
+      // Persist the latest snapshot first so the saved code matches what's submitted
+      await saveCollabRoomCode(roomId, code);
+      await createSubmission({ title: roomName, code, language });
+      setSubmitToast(true);
+      setTimeout(() => {
+        setSubmitToast(false);
+        router.push("/review");
+      }, 1500);
+    } catch (err) {
+      setSubmitError((err as Error).message || "Failed to submit. Please try again.");
+    } finally {
+      setSubmitLoading(false);
+    }
+  }, [roomId, roomName, code, language, router]);
 
   const handleDeleteRoom = useCallback(async () => {
     setDeleteRoomLoading(true);
@@ -555,8 +574,21 @@ export function CollabEditorClient({
           </span>
         </div>
         <div className="flex items-center gap-2">
-          {savedToast && (
-            <span className="text-sm text-green-400">Saved!</span>
+          {submitToast && (
+            <span className="text-xs text-green-400 font-medium flex items-center gap-1">
+              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+              Submitted! Redirecting…
+            </span>
+          )}
+          {submitError && (
+            <span className="text-xs text-red-400 max-w-[200px] truncate" title={submitError}>
+              {submitError}
+            </span>
+          )}
+          {savedToast && !submitToast && (
+            <span className="text-xs text-green-400">Saved!</span>
           )}
           <VoiceVideoCall roomId={roomId} userEmail={userEmail} />
           <button
@@ -569,9 +601,10 @@ export function CollabEditorClient({
           <button
             type="button"
             onClick={handleSubmitToReview}
-            className="rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-white hover:opacity-90"
+            disabled={submitLoading || submitToast}
+            className="rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-white hover:opacity-90 disabled:opacity-60 disabled:cursor-not-allowed"
           >
-            Submit to Review
+            {submitLoading ? "Submitting…" : "Submit to Review"}
           </button>
           {userId === roomCreatedBy && (
             <button
